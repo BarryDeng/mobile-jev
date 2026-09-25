@@ -1,13 +1,15 @@
 import { parseArgs } from 'node:util';
 import { mkdir, open, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { MobilerunDevice } from './device.mjs';
+import { createDevice } from './create-device.mjs';
 import { TypeSafePolicy, runAgent } from './agent.mjs';
 import { pooledRequest, decodeJson } from './http.mjs';
 import { measuredRequest, summarizeMetrics } from './metrics.mjs';
 import { confirmInput } from './input-verification.mjs';
+import { annotateScreenshot } from './layout.mjs';
+import { verifyPromptPickups } from '../game-verifiers.mjs';
 
-const help = `Mobilerun device harness (Node 22+ and curl)
+const help = `Device harness: Mobilerun (Node 22+ and curl) or ADB (JEV_DEVICE_BACKEND=adb)
 
 pnpm agent COMMAND [ARGS] [OPTIONS]
 
@@ -24,21 +26,26 @@ Commands:
   key enter|tab|delete|forward_delete|back
   home | back | recent           System navigation
   run GOAL                       Preview a TypeSafe decision; --execute runs the loop
+  layout                         Check a layout profile on a screenshot (--out annotated PNG)
+  verify-pickup TRACE            Check a Genshin prompt-pickup run on the device (--expect one|all|found)
 
 Options:
-  --device ID                    Or MOBILERUN_DEVICE_ID
+  --device ID                    Or MOBILERUN_DEVICE_ID / ADB_SERIAL (adb backend)
   --out PATH                     Save observe JSON or screenshot PNG
+  --layout PATH                  Fixed-control profile for game UIs (or JEV_LAYOUT)
   --snapshot PATH                Original observe JSON for tap-element
   --text VALUE                   Repeatable exact text candidates for TypeSafe
   --steps N                      Maximum actions (default 10, maximum 100)
   --confidence N                 Optional operation/target cutoff (default 0; disabled)
-  --settle-ms N                  Extra fixed wait after actions (default 0)
+  --settle-ms N                  Extra fixed wait after actions (default 0, or the layout's settleMs)
   --wait-timeout-ms N            Consecutive loading wait budget (default 15000)
   --text-completion MODE         accepted (verify locally) or committed (server waits)
   --execute                      Execute TypeSafe-selected actions
   --trace PATH                   Save model requests, responses, actions, and final state (JSONL)
+  --expect one|all|found         verify-pickup: one entry, the whole list, or any pickup after exploring
 
-Keys: MOBILERUN_API_KEY (or MOBILERUN_CLOUD_API_KEY); TYPESAFE_API_KEY for run.
+Keys: MOBILERUN_API_KEY (or MOBILERUN_CLOUD_API_KEY) unless JEV_DEVICE_BACKEND=adb;
+TYPESAFE_API_KEY for run.
 Direct commands execute immediately. Run sends goal and UI text to TypeSafe.
 `;
 
@@ -54,13 +61,15 @@ async function main() {
       help: { type: 'boolean', short: 'h' },
       device: { type: 'string' },
       out: { type: 'string' },
+      layout: { type: 'string' },
       snapshot: { type: 'string' },
       clear: { type: 'boolean' },
       execute: { type: 'boolean' },
       trace: { type: 'string' },
+      expect: { type: 'string' },
       steps: { type: 'string', default: '10' },
       confidence: { type: 'string', default: '0' },
-      'settle-ms': { type: 'string', default: '0' },
+      'settle-ms': { type: 'string' },
       'wait-timeout-ms': { type: 'string', default: '15000' },
       'text-completion': { type: 'string' },
       text: { type: 'string', multiple: true, default: [] },
@@ -76,9 +85,10 @@ async function main() {
     if (args.length < min || args.length > max)
       throw new Error(`Invalid arguments for ${command}. Use --help.`);
   };
-  const device = new MobilerunDevice({
-    deviceId: values.device || process.env.MOBILERUN_DEVICE_ID,
+  const device = createDevice({
+    deviceId: values.device,
     textCompletionMode: values['text-completion'],
+    layout: values.layout,
   });
   if (command === 'devices') {
     arity(0);
@@ -109,6 +119,39 @@ async function main() {
     } else print(observation);
     return;
   }
+  if (command === 'layout') {
+    arity(0);
+    if (!device.layout) throw new Error('layout requires --layout PATH or JEV_LAYOUT.');
+    const observation = await device.observe();
+    const report = annotateScreenshot(await device.screenshot(), device.layout, observation.screen);
+    if (values.out) await save(values.out, report.png);
+    print({
+      profile: device.layout.name,
+      app: observation.phone.packageName,
+      inLayoutApp: device.layout.packageNames.includes(observation.phone.packageName),
+      screen: observation.screen,
+      detectedScreen: report.detection.screen,
+      probes: report.detection.results,
+      buttons: report.buttons,
+      ...(values.out ? { saved: values.out } : {}),
+    });
+    return;
+  }
+  if (command === 'verify-pickup') {
+    arity(1);
+    const events = (await readFile(args[0], 'utf8'))
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    const report = verifyPromptPickups({
+      events,
+      final: await device.observe(),
+      expect: values.expect,
+    });
+    print(report);
+    if (!report.verified) process.exitCode = 2;
+    return;
+  }
   if (command === 'screenshot') {
     arity(0);
     const path = values.out || `artifacts/screen-${Date.now()}.png`;
@@ -118,6 +161,7 @@ async function main() {
   }
   if (command === 'run') {
     arity(1);
+    const settleMs = values['settle-ms'] === undefined ? undefined : Number(values['settle-ms']);
     let trace;
     if (values.trace) {
       await mkdir(dirname(values.trace), { recursive: true });
@@ -145,7 +189,8 @@ async function main() {
         execute: values.execute ?? false,
         confidenceThreshold: Number(values.confidence),
         maxSteps: Number(values.steps),
-        settleMs: Number(values['settle-ms']),
+        settleMs: settleMs ?? 0,
+        ...(device.layout ? { layoutSettleMs: device.layout.settleMs ?? 0 } : {}),
         waitTimeoutMs: Number(values['wait-timeout-ms']),
       });
       const result = await runAgent({
@@ -163,7 +208,7 @@ async function main() {
         texts: values.text,
         execute: values.execute,
         maxSteps: Number(values.steps),
-        settleMs: Number(values['settle-ms']),
+        settleMs,
         waitTimeoutMs: Number(values['wait-timeout-ms']),
         onStep: async (step) => {
           await record({ event: 'decision', ...step });

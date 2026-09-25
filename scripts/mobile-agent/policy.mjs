@@ -155,13 +155,23 @@ export class TypeSafePolicy {
   constructor({
     apiKey = process.env.TYPESAFE_API_KEY,
     model = process.env.TYPESAFE_MODEL || 'jev-latest',
+    // Same convention as the TypeSafe SDKs: a compatible gateway such as https://openrouter.ai/api.
+    baseUrl = process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai',
     threshold = 0,
     request = pooledRequest,
   } = {}) {
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)
       throw new Error('Confidence threshold must be between 0 and 1.');
+    let base;
+    try {
+      base = new URL(baseUrl);
+    } catch {
+      throw new Error('TYPESAFE_BASE_URL must be an absolute https URL.');
+    }
+    if (base.protocol !== 'https:') throw new Error('TYPESAFE_BASE_URL must use https.');
     this.apiKey = apiKey;
     this.model = model;
+    this.url = `${base.href.replace(/\/+$/, '')}/v1/systemone`;
     this.threshold = threshold;
     this.request = request;
   }
@@ -190,6 +200,15 @@ export class TypeSafePolicy {
       state: {
         goal,
         app: observation.phone.packageName,
+        ...(observation.layout
+          ? {
+              fixedLayout: {
+                profile: observation.layout.profile,
+                screen: observation.layout.screen,
+                description: observation.layout.description,
+              },
+            }
+          : {}),
         isEditable: observation.phone.isEditable,
         textSource: textOptions.source,
         textEntryAvailableAfterFocus: textOptions.values.length > 0,
@@ -221,7 +240,7 @@ export class TypeSafePolicy {
     const started = performance.now();
     const response = decodeJson(
       await this.request({
-        url: 'https://api.typesafe.ai/v1/systemone',
+        url: this.url,
         apiKey: this.apiKey,
         method: 'POST',
         body,

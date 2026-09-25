@@ -1,4 +1,4 @@
-import { MobilerunDevice } from './device.mjs';
+import { createDevice } from './create-device.mjs';
 import { TypeSafePolicy, runAgent } from './agent.mjs';
 
 const emit = (type, data) =>
@@ -11,7 +11,7 @@ try {
   }
   const { goal, maxSteps } = JSON.parse(input);
   const result = await runAgent({
-    device: new MobilerunDevice(),
+    device: createDevice(),
     policy: new TypeSafePolicy(),
     goal,
     maxSteps,

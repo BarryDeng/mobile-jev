@@ -1,0 +1,1667 @@
+{
+  "name": "Genshin Impact mobile HUD (default layout)",
+  "notes": "Calibrated on a 2400x1080 Android emulator (default touch layout, zh-CN client). x/y are control centres on the reference screen; the anchor edge keeps its distance when the aspect ratio differs. w/h are tap-area sizes. Probes are reference-space pixels with expected RGB; the first screen whose probes all match is reported. Recalibrate with `pnpm agent layout --layout layouts/genshin-impact.json --out artifacts/layout.png`. Interaction prompt lists (1–5 entries, centred at y 538 with a 90 px pitch) were measured with 1 and 3 entries and extrapolated for 2, 4 and 5; reply options were measured with two options only. Button `text` and screen `texts` boxes are OCR regions: prompt labels span x 1480–1760, reply options x 1535–1800, and the dialogue speaker and two subtitle lines sit above the bottom edge.",
+  "appLabel": "Genshin Impact 原神",
+  "packageNames": [
+    "com.miHoYo.GenshinImpact",
+    "com.miHoYo.Yuanshen",
+    "com.miHoYo.ys.bilibili",
+    "com.miHoYo.ys.mi"
+  ],
+  "reference": {
+    "width": 2400,
+    "height": 1080
+  },
+  "unknownRetries": 2,
+  "settleMs": 1500,
+  "screens": {
+    "world_prompts_5": {
+      "description": "Open world 大世界 with a list of 5 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 358,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 358,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 448,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 448,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 538,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 538,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 628,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 628,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 718,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 718,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world_prompts_4": {
+      "description": "Open world 大世界 with a list of 4 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 403,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 403,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 493,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 493,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 583,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 583,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 673,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 673,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world_prompts_3": {
+      "description": "Open world 大世界 with a list of 3 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 448,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 448,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 538,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 538,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 628,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 628,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world_prompts_2": {
+      "description": "Open world 大世界 with a list of 2 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 493,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 493,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 583,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 583,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world_talk": {
+      "description": "Open world 大世界 (no conversation in progress) with the combat HUD, plus a talk prompt 对话提示 (speech bubble with an NPC name) on the right because an NPC is nearby; this is already the open world. Tapping the prompt starts a conversation. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1440,
+          "y": 530,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1455,
+          "y": 540,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1440,
+          "y": 520,
+          "rgb": [37, 49, 62],
+          "tolerance": 35
+        },
+        {
+          "anchor": "center",
+          "x": 1418,
+          "y": 537,
+          "rgb": [45, 54, 66],
+          "tolerance": 35
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world_prompts_1": {
+      "description": "Open world 大世界 with one interaction prompt 交互提示 on the right (pick up, investigate, open or activate something nearby); this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1414,
+          "y": 538,
+          "rgb": [91, 92, 88],
+          "tolerance": 22
+        },
+        {
+          "anchor": "center",
+          "x": 1424,
+          "y": 538,
+          "rgb": [41, 52, 66],
+          "tolerance": 28
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "world": {
+      "description": "Open world 大世界 with the combat HUD (Paimon icon, minimap, teammates, attack, jump and sprint buttons); this is already the open world. System BACK here does not go back; it asks to quit the game. No interaction prompt was detected, so nothing within reach was found to pick up, talk to or interact with.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2124,
+          "y": 926,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        }
+      ],
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        }
+      ]
+    },
+    "paimon_menu": {
+      "description": "Paimon menu 派蒙菜单, an overlay on top of the open world (not the open world itself): profile card with a grid of shortcuts (shop, party, characters, inventory, quests, map, events); its back arrow returns to the open world",
+      "probes": [
+        {
+          "anchor": "left",
+          "x": 230,
+          "y": 420,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "left",
+          "x": 1035,
+          "y": 600,
+          "rgb": [244, 241, 236],
+          "tolerance": 25
+        },
+        {
+          "anchor": "left",
+          "x": 100,
+          "y": 600,
+          "rgb": [80, 91, 112],
+          "tolerance": 35
+        }
+      ]
+    },
+    "menu": {
+      "description": "Full-screen menu 全屏菜单 with a round X close button at top right, such as inventory 背包 or map 地图",
+      "probes": [
+        {
+          "anchor": "top-right",
+          "x": 2214,
+          "y": 60,
+          "rgb": [59, 66, 85],
+          "tolerance": 30
+        },
+        {
+          "anchor": "top-right",
+          "x": 2190,
+          "y": 60,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "top-right",
+          "x": 2238,
+          "y": 60,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        }
+      ]
+    },
+    "dialogue_choice": {
+      "description": "NPC dialogue 对话 still in progress, waiting for a reply option 对话选项 to be chosen from the list on the right (each option has a speech bubble). Choosing the last option, often 再见 goodbye, leads to a closing line that must still be continued before the open world returns.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 436,
+          "y": 42,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "top-left",
+          "x": 622,
+          "y": 76,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1510,
+          "y": 612,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1510,
+          "y": 632,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1540,
+          "y": 600,
+          "rgb": [38, 51, 65],
+          "tolerance": 35
+        }
+      ],
+      "texts": [
+        {
+          "id": "speaker",
+          "label": "Speaker name 说话人",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 805,
+          "w": 1000,
+          "h": 50
+        },
+        {
+          "id": "subtitle",
+          "label": "Dialogue line 台词",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 873,
+          "w": 1300,
+          "h": 44
+        },
+        {
+          "id": "subtitle_2",
+          "label": "Dialogue line, wrapped continuation 台词第二行",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 912,
+          "w": 1300,
+          "h": 40
+        }
+      ]
+    },
+    "dialogue": {
+      "description": "NPC dialogue 对话 still in progress (this is not the open world: the combat HUD is hidden). A speaker name and subtitle line are near the bottom center and a playback toolbar (自动 auto, 回顾 log, hide, voice) is at top left. Tap continue to advance; the conversation ends only when the open world HUD comes back. System BACK does nothing here.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 255,
+          "y": 50,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "top-left",
+          "x": 268,
+          "y": 59,
+          "rgb": [59, 67, 84],
+          "tolerance": 30
+        },
+        {
+          "anchor": "top-left",
+          "x": 436,
+          "y": 42,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        },
+        {
+          "anchor": "top-left",
+          "x": 622,
+          "y": 76,
+          "rgb": [236, 229, 216],
+          "tolerance": 25
+        }
+      ],
+      "texts": [
+        {
+          "id": "speaker",
+          "label": "Speaker name 说话人",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 805,
+          "w": 1000,
+          "h": 50
+        },
+        {
+          "id": "subtitle",
+          "label": "Dialogue line 台词",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 873,
+          "w": 1300,
+          "h": 44
+        },
+        {
+          "id": "subtitle_2",
+          "label": "Dialogue line, wrapped continuation 台词第二行",
+          "anchor": "bottom",
+          "x": 1200,
+          "y": 912,
+          "w": 1300,
+          "h": 40
+        }
+      ]
+    },
+    "confirm_dialog": {
+      "description": "Confirmation dialog 确认对话框 in the middle of the screen, for example 确认退出游戏 (quit the game?) which system BACK opens from the open world; 取消 cancel on the left closes it and stays in the game",
+      "probes": [
+        {
+          "anchor": "center",
+          "x": 800,
+          "y": 380,
+          "rgb": [255, 255, 255],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1600,
+          "y": 380,
+          "rgb": [255, 255, 255],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1200,
+          "y": 700,
+          "rgb": [255, 255, 255],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1300,
+          "y": 602,
+          "rgb": [57, 59, 64],
+          "tolerance": 30
+        }
+      ]
+    },
+    "world_swimming": {
+      "description": "Open world 大世界 while the character swims: jump, attacks and skills are hidden; sprint dashes through the water and drains stamina.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2134,
+          "y": 898,
+          "rgb": [213, 231, 236],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2140,
+          "y": 936,
+          "rgb": [214, 232, 237],
+          "tolerance": 30
+        }
+      ]
+    },
+    "world_climbing": {
+      "description": "Open world 大世界 while the character climbs a wall, cliff or tree: sprint and elemental skill are hidden and the normal attack button drops the character down 下落.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2074,
+          "y": 694,
+          "rgb": [232, 236, 240],
+          "tolerance": 30
+        }
+      ]
+    }
+  },
+  "joystick": {
+    "anchor": "bottom-left",
+    "x": 330,
+    "y": 830,
+    "radius": 130
+  },
+  "minimap": {
+    "anchor": "top-left",
+    "x": 300,
+    "y": 150,
+    "w": 180,
+    "h": 180
+  },
+  "routines": [
+    {
+      "id": "explore",
+      "type": "explore",
+      "label": "Explore 随机游走",
+      "description": "Code walks the character in random directions for up to 15 seconds with the joystick and stops as soon as a new interaction prompt appears, the screen leaves the open world, or the character stays stuck. Use it to look for something to pick up, talk to or interact with.",
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5",
+        "world_climbing",
+        "world_swimming"
+      ],
+      "stopScreens": [
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5"
+      ],
+      "recover": {
+        "world_climbing": "normal_attack"
+      },
+      "stuckButton": "jump",
+      "recoverAfter": 3,
+      "maxMs": 15000,
+      "deflection": 0.5,
+      "turnScreens": ["world_swimming"]
+    },
+    {
+      "id": "dialogue",
+      "type": "dialogue",
+      "label": "Continue dialogue 自动推进对话",
+      "description": "Code taps through the conversation until reply options appear (then you choose one), the open world returns (the conversation ended), or it stops changing. Up to 60 seconds.",
+      "screens": ["dialogue"],
+      "stopScreens": ["dialogue_choice"],
+      "doneScreens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5",
+        "world_climbing",
+        "world_swimming"
+      ],
+      "button": "dialogue_continue",
+      "intervalMs": 300,
+      "unknownLimit": 6,
+      "maxMs": 60000
+    },
+    {
+      "id": "combat",
+      "type": "combat",
+      "label": "Fight 战斗",
+      "description": "Code fights nearby enemies for up to 20 seconds: each active character uses elemental skill, burst and a few normal attacks, then the next teammate is switched in. It does not walk towards enemies and cannot see them yet, so it always runs to its time limit unless the screen leaves the open world.",
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5"
+      ],
+      "attack": "normal_attack",
+      "skill": "elemental_skill",
+      "burst": "elemental_burst",
+      "switchButtons": ["teammate_1", "teammate_2", "teammate_3"],
+      "attackTaps": 4,
+      "maxMs": 20000
+    }
+  ],
+  "buttons": [
+    {
+      "id": "paimon_menu",
+      "label": "Paimon menu 派蒙菜单",
+      "description": "Opens the main game menu",
+      "anchor": "top-left",
+      "x": 165,
+      "y": 65,
+      "w": 90,
+      "h": 90,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "minimap",
+      "label": "Minimap 小地图",
+      "description": "Opens the world map",
+      "anchor": "top-left",
+      "x": 300,
+      "y": 150,
+      "w": 220,
+      "h": 220,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "quest",
+      "label": "Tracked quest 任务追踪",
+      "description": "Opens the quest log",
+      "anchor": "top-left",
+      "x": 160,
+      "y": 240,
+      "w": 70,
+      "h": 70,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "teammate_1",
+      "label": "Teammate row 1 队伍列表第1行",
+      "description": "Switches to the first listed teammate; the active character is not listed",
+      "anchor": "right",
+      "x": 2150,
+      "y": 240,
+      "w": 260,
+      "h": 100,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "teammate_2",
+      "label": "Teammate row 2 队伍列表第2行",
+      "description": "Switches to the second listed teammate",
+      "anchor": "right",
+      "x": 2150,
+      "y": 350,
+      "w": 260,
+      "h": 100,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "teammate_3",
+      "label": "Teammate row 3 队伍列表第3行",
+      "description": "Switches to the third listed teammate",
+      "anchor": "right",
+      "x": 2150,
+      "y": 460,
+      "w": 260,
+      "h": 100,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "interact",
+      "label": "Talk 对话",
+      "description": "Interaction prompt: talk to the nearby NPC (starts the dialogue)",
+      "anchor": "center",
+      "x": 1560,
+      "y": 538,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_talk"],
+      "text": {
+        "x": 1620,
+        "y": 538,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_1",
+      "label": "Interaction prompt 交互",
+      "description": "Performs the single nearby interaction (pick up, investigate, open or activate)",
+      "anchor": "center",
+      "x": 1560,
+      "y": 538,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_1"],
+      "text": {
+        "x": 1620,
+        "y": 538,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_1_of_2",
+      "label": "Interaction prompt 1 of 2 第1个交互选项（共2个）",
+      "description": "Performs the first interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 493,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_2"],
+      "text": {
+        "x": 1620,
+        "y": 493,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_2_of_2",
+      "label": "Interaction prompt 2 of 2 第2个交互选项（共2个）",
+      "description": "Performs the second interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 583,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_2"],
+      "text": {
+        "x": 1620,
+        "y": 583,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_1_of_3",
+      "label": "Interaction prompt 1 of 3 第1个交互选项（共3个）",
+      "description": "Performs the first interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 448,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_3"],
+      "text": {
+        "x": 1620,
+        "y": 448,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_2_of_3",
+      "label": "Interaction prompt 2 of 3 第2个交互选项（共3个）",
+      "description": "Performs the second interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 538,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_3"],
+      "text": {
+        "x": 1620,
+        "y": 538,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_3_of_3",
+      "label": "Interaction prompt 3 of 3 第3个交互选项（共3个）",
+      "description": "Performs the third interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 628,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_3"],
+      "text": {
+        "x": 1620,
+        "y": 628,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_1_of_4",
+      "label": "Interaction prompt 1 of 4 第1个交互选项（共4个）",
+      "description": "Performs the first interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 403,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_4"],
+      "text": {
+        "x": 1620,
+        "y": 403,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_2_of_4",
+      "label": "Interaction prompt 2 of 4 第2个交互选项（共4个）",
+      "description": "Performs the second interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 493,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_4"],
+      "text": {
+        "x": 1620,
+        "y": 493,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_3_of_4",
+      "label": "Interaction prompt 3 of 4 第3个交互选项（共4个）",
+      "description": "Performs the third interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 583,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_4"],
+      "text": {
+        "x": 1620,
+        "y": 583,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_4_of_4",
+      "label": "Interaction prompt 4 of 4 第4个交互选项（共4个）",
+      "description": "Performs the fourth interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 673,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_4"],
+      "text": {
+        "x": 1620,
+        "y": 673,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_1_of_5",
+      "label": "Interaction prompt 1 of 5 第1个交互选项（共5个）",
+      "description": "Performs the first interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 358,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_5"],
+      "text": {
+        "x": 1620,
+        "y": 358,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_2_of_5",
+      "label": "Interaction prompt 2 of 5 第2个交互选项（共5个）",
+      "description": "Performs the second interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 448,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_5"],
+      "text": {
+        "x": 1620,
+        "y": 448,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_3_of_5",
+      "label": "Interaction prompt 3 of 5 第3个交互选项（共5个）",
+      "description": "Performs the third interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 538,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_5"],
+      "text": {
+        "x": 1620,
+        "y": 538,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_4_of_5",
+      "label": "Interaction prompt 4 of 5 第4个交互选项（共5个）",
+      "description": "Performs the fourth interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 628,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_5"],
+      "text": {
+        "x": 1620,
+        "y": 628,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "prompt_5_of_5",
+      "label": "Interaction prompt 5 of 5 第5个交互选项（共5个）",
+      "description": "Performs the fifth interaction in the list, counting from the top",
+      "anchor": "center",
+      "x": 1560,
+      "y": 718,
+      "w": 300,
+      "h": 70,
+      "screens": ["world_prompts_5"],
+      "text": {
+        "x": 1620,
+        "y": 718,
+        "w": 280,
+        "h": 56
+      }
+    },
+    {
+      "id": "gadget",
+      "label": "Gadget 小道具",
+      "description": "Uses the equipped gadget",
+      "anchor": "bottom-right",
+      "x": 1785,
+      "y": 690,
+      "w": 90,
+      "h": 90,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1"
+      ]
+    },
+    {
+      "id": "normal_attack",
+      "label": "Normal attack 普通攻击",
+      "anchor": "bottom-right",
+      "x": 1920,
+      "y": 830,
+      "w": 190,
+      "h": 190,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing"
+      ]
+    },
+    {
+      "id": "elemental_skill",
+      "label": "Elemental skill 元素战技",
+      "anchor": "bottom-right",
+      "x": 1735,
+      "y": 930,
+      "w": 140,
+      "h": 140,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1"
+      ]
+    },
+    {
+      "id": "elemental_burst",
+      "label": "Elemental burst 元素爆发",
+      "description": "Only works when fully charged",
+      "anchor": "bottom-right",
+      "x": 1565,
+      "y": 970,
+      "w": 110,
+      "h": 110,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1"
+      ]
+    },
+    {
+      "id": "jump",
+      "label": "Jump 跳跃",
+      "anchor": "bottom-right",
+      "x": 2100,
+      "y": 705,
+      "w": 140,
+      "h": 140,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_climbing"
+      ]
+    },
+    {
+      "id": "sprint",
+      "label": "Sprint / dash 冲刺",
+      "anchor": "bottom-right",
+      "x": 2100,
+      "y": 930,
+      "w": 140,
+      "h": 140,
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_5",
+        "world_prompts_4",
+        "world_prompts_3",
+        "world_prompts_2",
+        "world_prompts_1",
+        "world_swimming"
+      ]
+    },
+    {
+      "id": "menu_back",
+      "label": "Back 返回",
+      "description": "Closes the Paimon menu and returns to the open world 大世界",
+      "anchor": "top-left",
+      "x": 150,
+      "y": 60,
+      "w": 90,
+      "h": 90,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_shop",
+      "label": "Shop 商城",
+      "anchor": "left",
+      "x": 330,
+      "y": 510,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_party_setup",
+      "label": "Party setup 队伍配置",
+      "anchor": "left",
+      "x": 530,
+      "y": 510,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_friends",
+      "label": "Friends 好友",
+      "anchor": "left",
+      "x": 724,
+      "y": 510,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_achievements",
+      "label": "Achievements 成就",
+      "anchor": "left",
+      "x": 920,
+      "y": 510,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_archive",
+      "label": "Archive 图鉴",
+      "anchor": "left",
+      "x": 330,
+      "y": 690,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_character_archive",
+      "label": "Character archive 角色图鉴",
+      "anchor": "left",
+      "x": 530,
+      "y": 690,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_characters",
+      "label": "Characters 角色",
+      "anchor": "left",
+      "x": 724,
+      "y": 690,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_guide",
+      "label": "Adventurer guide 提升指南",
+      "anchor": "left",
+      "x": 920,
+      "y": 690,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_inventory",
+      "label": "Inventory 背包",
+      "anchor": "left",
+      "x": 330,
+      "y": 870,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_quests",
+      "label": "Quests 任务",
+      "anchor": "left",
+      "x": 530,
+      "y": 870,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_map",
+      "label": "Map 地图",
+      "anchor": "left",
+      "x": 724,
+      "y": 870,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_events",
+      "label": "Events 活动",
+      "anchor": "left",
+      "x": 920,
+      "y": 870,
+      "w": 180,
+      "h": 170,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "menu_settings",
+      "label": "Settings 设置",
+      "anchor": "left",
+      "x": 150,
+      "y": 875,
+      "w": 80,
+      "h": 80,
+      "screens": ["paimon_menu"]
+    },
+    {
+      "id": "dialogue_continue",
+      "label": "Continue dialogue 继续对话",
+      "description": "Advances to the next dialogue line; after the last line the conversation closes and the open world returns",
+      "anchor": "bottom",
+      "x": 1200,
+      "y": 900,
+      "w": 700,
+      "h": 140,
+      "screens": ["dialogue"]
+    },
+    {
+      "id": "dialogue_option_1",
+      "label": "First reply option 第一个对话选项",
+      "description": "Upper reply option in a two-option list",
+      "anchor": "center",
+      "x": 1620,
+      "y": 622,
+      "w": 300,
+      "h": 60,
+      "screens": ["dialogue_choice"],
+      "text": {
+        "x": 1667,
+        "y": 622,
+        "w": 265,
+        "h": 56
+      }
+    },
+    {
+      "id": "dialogue_option_2",
+      "label": "Second reply option 第二个对话选项",
+      "description": "Lower reply option in a two-option list, often 再见 goodbye (the NPC then says one closing line)",
+      "anchor": "center",
+      "x": 1620,
+      "y": 712,
+      "w": 300,
+      "h": 60,
+      "screens": ["dialogue_choice"],
+      "text": {
+        "x": 1667,
+        "y": 712,
+        "w": 265,
+        "h": 56
+      }
+    },
+    {
+      "id": "close",
+      "label": "Close menu 关闭",
+      "description": "The round X button that closes the current full-screen menu and goes back to the screen that opened it, often the Paimon menu, not necessarily the open world",
+      "anchor": "top-right",
+      "x": 2214,
+      "y": 60,
+      "w": 80,
+      "h": 80,
+      "screens": ["menu"]
+    },
+    {
+      "id": "confirm_cancel",
+      "label": "Cancel 取消",
+      "description": "Closes the confirmation without doing anything (does not quit the game)",
+      "anchor": "center",
+      "x": 998,
+      "y": 602,
+      "w": 340,
+      "h": 110,
+      "screens": ["confirm_dialog"]
+    }
+  ]
+}

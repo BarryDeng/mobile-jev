@@ -47,5 +47,9 @@
   "homepage": "https://github.com/droidrun/mobile-jev#readme",
   "bugs": {
     "url": "https://github.com/droidrun/mobile-jev/issues"
+  },
+  "optionalDependencies": {
+    "@gutenye/ocr-models": "1.4.2",
+    "onnxruntime-node": "1.30.0"
   }
 }

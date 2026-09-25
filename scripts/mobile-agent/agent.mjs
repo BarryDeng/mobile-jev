@@ -13,7 +13,7 @@ export async function runAgent({
   texts = [],
   execute = false,
   maxSteps = 10,
-  settleMs = 0,
+  settleMs,
   settleTimeoutMs = 400,
   waitTimeoutMs = 15_000,
   inputTimeoutMs = 2500,
@@ -23,7 +23,11 @@ export async function runAgent({
 }) {
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 100)
     throw new Error('maxSteps must be 1–100.');
-  for (const [key, value] of Object.entries({ settleMs, settleTimeoutMs, inputTimeoutMs })) {
+  for (const [key, value] of Object.entries({
+    settleMs: settleMs ?? 0,
+    settleTimeoutMs,
+    inputTimeoutMs,
+  })) {
     if (!Number.isFinite(value) || value < 0 || value > 10_000)
       throw new Error(`${key} must be 0–10000.`);
   }
@@ -59,6 +63,8 @@ export async function runAgent({
     typeof device.listApps === 'function' ? device.listApps() : Promise.resolve([]),
   ]);
   let observation = initialObservation;
+  // Traces keep the starting screen so outcomes can be checked from the whole run.
+  await onObservation({ step: null, initial: true, observation, screenChanged: null });
   const finish = (status, decision) => ({
     status,
     steps: history.length,
@@ -144,8 +150,11 @@ export async function runAgent({
       operation: entry.operation,
       label,
       executedMs: Math.round(performance.now() - started),
+      ...(receipt?.routine ? { routine: receipt.routine } : {}),
     });
-    if (settleMs) await wait(settleMs);
+    // Game screens load after the tap already changed pixels; a layout profile can ask for a pause.
+    const settle = settleMs ?? (observation.layout ? (device.layout?.settleMs ?? 0) : 0);
+    if (settle) await wait(settle);
     let after = await observe();
     if (receipt?.inputVerification) {
       const confirmation = await confirmInput({
@@ -183,8 +192,22 @@ export async function runAgent({
     }
     entry.after = after.fingerprint;
     entry.screenChanged = observation.fingerprint !== after.fingerprint;
+    // Game frames always differ in pixels; the layout signature (screen and read texts) does not.
+    const layoutSignature = observation.layout?.signature;
+    entry.layoutUnchanged =
+      !isWait && !!layoutSignature && layoutSignature === after.layout?.signature;
     await onObservation({ step, observation: after, screenChanged: entry.screenChanged });
     observation = after;
+    const previous = history.at(-2);
+    if (
+      entry.layoutUnchanged &&
+      previous?.layoutUnchanged &&
+      JSON.stringify(previous.action) === JSON.stringify(entry.action)
+    )
+      return finish('no_progress', {
+        ...decision,
+        reason: `${label} was used twice in a row without any visible change.`,
+      });
   }
   return finish('decision_limit');
 }

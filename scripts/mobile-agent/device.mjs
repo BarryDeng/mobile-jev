@@ -274,7 +274,7 @@ export class MobilerunDevice {
         throw new Error('The app was not observed in the installed-app list.');
       if (expected && expected.deviceId !== this.deviceId)
         throw new Error('Observation belongs to a different device.');
-      await this.api(this.path(`/apps/${encodeURIComponent(action.packageName)}`), 'PUT', {});
+      await this.launchApp(action.packageName);
       return;
     }
     const current = await this.observe();
@@ -371,7 +371,28 @@ export class MobilerunDevice {
       default:
         throw new Error('Unsupported action type.');
     }
-    await this.api(this.path(suffix), method, body);
+    await this.send(suffix, method, body, current);
     return inputVerification ? { inputVerification } : undefined;
+  }
+
+  // Transport hooks: other backends (e.g. ADB) override these and reuse all validation above.
+  async launchApp(packageName) {
+    await this.api(this.path(`/apps/${encodeURIComponent(packageName)}`), 'PUT', {});
+  }
+
+  async send(suffix, method, body) {
+    await this.api(this.path(suffix), method, body);
+  }
+
+  async describe() {
+    const d = await this.api(this.path());
+    return {
+      id: d.id,
+      name: d.name,
+      state: d.state,
+      streamUrl: d.streamUrl || null,
+      streamToken: d.streamToken || null,
+      environment: new URL(this.baseUrl).hostname.includes('staging') ? 'Staging' : 'Cloud',
+    };
   }
 }

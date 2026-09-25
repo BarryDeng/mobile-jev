@@ -74,6 +74,27 @@ test('operation and compatible targets are asked in one call; only selected targ
   assert.equal(decision.responseModel, 'jev-test');
 });
 
+test('a TypeSafe-compatible gateway base URL receives the System One request', async () => {
+  const urls = [];
+  const request = async ({ url, body }) => {
+    urls.push(url);
+    return Buffer.from(
+      JSON.stringify({ answers: { operation: answer(body.questions.operation.criteria, 'DONE') } }),
+    );
+  };
+  await new TypeSafePolicy({ request }).decide({ goal: 'Done', observation: observe() });
+  await new TypeSafePolicy({ request, baseUrl: 'https://openrouter.ai/api/' }).decide({
+    goal: 'Done',
+    observation: observe(),
+  });
+  assert.deepEqual(urls, [
+    'https://api.typesafe.ai/v1/systemone',
+    'https://openrouter.ai/api/v1/systemone',
+  ]);
+  assert.throws(() => new TypeSafePolicy({ baseUrl: 'http://openrouter.ai/api' }), /https/);
+  assert.throws(() => new TypeSafePolicy({ baseUrl: 'openrouter.ai' }), /absolute https/);
+});
+
 test('scroll choice consumes its region only; single-candidate target is supported', async () => {
   const policy = new TypeSafePolicy({
     request: async ({ body }) =>
@@ -280,6 +301,35 @@ test('changed screens proceed without any fixed post-action wait', async () => {
   const result = await runAgent({ device, policy, goal: 'Home', execute: true });
   assert.equal(result.timings.waitMs, 0);
   assert.equal(reads, 2);
+});
+
+test("a layout's settleMs pauses after actions on layout screens unless settleMs is explicit", async () => {
+  for (const [settleMs, onLayout, expectWait] of [
+    [undefined, true, true],
+    [undefined, false, false],
+    [0, true, false],
+  ]) {
+    let reads = 0,
+      decisions = 0;
+    const device = {
+      layout: { settleMs: 30 },
+      assertReady: async () => {},
+      observe: async () => ({
+        ...observe(),
+        fingerprint: String(reads++),
+        ...(onLayout ? { layout: { profile: 'Game', screen: 'world' } } : {}),
+      }),
+      act: async () => {},
+    };
+    const policy = {
+      decide: async () =>
+        decisions++
+          ? { status: 'done' }
+          : { status: 'action', action: { type: 'global', name: 'home' } },
+    };
+    const result = await runAgent({ device, policy, goal: 'Home', execute: true, settleMs });
+    assert.equal(result.timings.waitMs >= 25, expectWait, JSON.stringify({ settleMs, onLayout }));
+  }
 });
 
 test('transitional snapshots without a foreground app are polled before another model call', async () => {

@@ -3,7 +3,7 @@ import { mkdir, open, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { loadEnvironment } from './env.mjs';
-import { MobilerunDevice } from './mobile-agent/device.mjs';
+import { createDevice } from './mobile-agent/create-device.mjs';
 import { TypeSafePolicy, runAgent } from './mobile-agent/agent.mjs';
 import { pooledRequest, decodeJson } from './mobile-agent/http.mjs';
 import { measuredRequest, summarizeMetrics } from './mobile-agent/metrics.mjs';
@@ -47,7 +47,7 @@ async function main() {
     };
     const metrics = [],
       decisions = [];
-    const device = new MobilerunDevice({
+    const device = createDevice({
       request: measuredRequest({
         service: 'mobilerun',
         metrics,
