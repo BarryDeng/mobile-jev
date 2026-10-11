@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { StaleObservationError, assertFresh } from './device.mjs';
 import { decodePng, encodePng, rgbAt, toRgba } from './png.mjs';
-import { ROUTINES, ROUTINE_TYPES } from './routines.mjs';
+import { ROUTINES, ROUTINE_TYPES, enemyArrow, enemyBars, findEnemies } from './routines.mjs';
 
 const ANCHORS = {
   'top-left': [0, 0],
@@ -40,6 +40,11 @@ export function validateLayout(layout) {
     throw new Error('Layout packageNames must list the app packages it applies to.');
   positive(reference?.width, 'reference.width');
   positive(reference?.height, 'reference.height');
+  if (reference.uiAspect !== undefined) {
+    positive(reference.uiAspect, 'reference.uiAspect');
+    if (reference.uiAspect > reference.width / reference.height + 1e-6)
+      throw new Error('reference.uiAspect must not exceed the reference width/height ratio.');
+  }
   const { unknownRetries = 0, settleMs = 0 } = layout;
   if (!Number.isInteger(unknownRetries) || unknownRetries < 0 || unknownRetries > 5)
     throw new Error('unknownRetries must be an integer 0–5.');
@@ -48,8 +53,15 @@ export function validateLayout(layout) {
   for (const [id, screen] of Object.entries(screens)) {
     if (!ID.test(id)) throw new Error(`Screen id "${id}" must match ${ID}.`);
     if (!Array.isArray(screen.probes ?? [])) throw new Error(`Screen ${id} probes must be a list.`);
+    if (
+      screen.drift !== undefined &&
+      !(Number.isFinite(screen.drift?.x) && screen.drift.x >= 0 && screen.drift.x <= 200)
+    )
+      throw new Error(`screens.${id}.drift.x must be a number 0–200.`);
     (screen.probes ?? []).forEach((probe, i) => {
       point(probe, `screens.${id}.probes[${i}]`, reference);
+      if (probe.drift !== undefined && typeof probe.drift !== 'boolean')
+        throw new Error(`screens.${id}.probes[${i}].drift must be true or false.`);
       if (
         !Array.isArray(probe.rgb) ||
         probe.rgb.length !== 3 ||
@@ -108,12 +120,39 @@ export function validateLayout(layout) {
 }
 
 function validateRoutines(layout, buttonIds) {
-  const { reference, screens = {}, joystick, minimap, routines = [] } = layout;
+  const { reference, screens = {}, joystick, minimap, enemy, routines = [] } = layout;
   if (joystick !== undefined) {
     point(joystick, 'joystick', reference);
     positive(joystick.radius, 'joystick.radius');
   }
   if (minimap !== undefined) textBox(minimap, 'minimap', reference);
+  if (enemy !== undefined) {
+    textBox(enemy, 'enemy', reference);
+    if (
+      !Array.isArray(enemy.rgb) ||
+      enemy.rgb.length !== 3 ||
+      !enemy.rgb.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)
+    )
+      throw new Error('enemy.rgb must be three integers 0–255.');
+    if (!Number.isInteger(enemy.tolerance) || enemy.tolerance < 0 || enemy.tolerance > 255)
+      throw new Error('enemy.tolerance must be an integer 0–255.');
+    for (const key of ['minWidth', 'maxHeight', 'nearWidth'])
+      if (enemy[key] !== undefined) positive(enemy[key], `enemy.${key}`);
+    if (enemy.levelText !== undefined) {
+      if (typeof enemy.levelText !== 'string' || !enemy.levelText)
+        throw new Error('enemy.levelText must be a regular expression string.');
+      new RegExp(enemy.levelText);
+    }
+    if (enemy.arrowRing !== undefined) {
+      const ring = enemy.arrowRing;
+      positive(ring.inner, 'enemy.arrowRing.inner');
+      positive(ring.outer, 'enemy.arrowRing.outer');
+      if (ring.outer <= ring.inner) throw new Error('enemy.arrowRing.outer must exceed inner.');
+    }
+    for (const screen of enemy.screens ?? [])
+      if (!Object.hasOwn(screens, screen))
+        throw new Error(`enemy.screens has unknown screen ${screen}.`);
+  }
   if (!Array.isArray(routines)) throw new Error('routines must be a list.');
   const ids = new Set();
   const screenList = (list, name) => {
@@ -161,31 +200,132 @@ function validateRoutines(layout, buttonIds) {
         int(routine, key, name, 0, 5000);
       int(routine, 'attackTaps', name, 1, 10);
       int(routine, 'clearFrames', name, 1, 10);
-      if (routine.enemy !== undefined) {
-        const { enemy } = routine;
-        textBox(enemy, `${name}.enemy`, reference);
-        if (
-          !Array.isArray(enemy.rgb) ||
-          enemy.rgb.length !== 3 ||
-          !enemy.rgb.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)
-        )
-          throw new Error(`${name}.enemy.rgb must be three integers 0–255.`);
-        int(enemy, 'tolerance', `${name}.enemy`, 0, 255);
-        if (enemy.tolerance === undefined) throw new Error(`${name}.enemy.tolerance is required.`);
-        int(enemy, 'minPixels', `${name}.enemy`, 1, 100_000);
+      for (const [screen, id] of Object.entries(routine.recover ?? {})) {
+        screenList([screen], `${name}.recover`);
+        button(id, `${name}.recover`);
+      }
+      const alive = routine.alivePortrait;
+      if (alive !== undefined) {
+        positive(alive.w, `${name}.alivePortrait.w`);
+        positive(alive.h, `${name}.alivePortrait.h`);
       }
       continue;
     }
+    if (routine.type === 'teleport') {
+      if (routine.open === undefined) throw new Error(`${name}.open is required.`);
+      button(routine.open, `${name}.open`);
+      screenList(routine.doneScreens, `${name}.doneScreens`);
+      if (!routine.doneScreens?.length) throw new Error(`${name}.doneScreens must list arrivals.`);
+      if (routine.mapScreen !== undefined) screenList([routine.mapScreen], `${name}.mapScreen`);
+      for (const key of ['title', 'button']) {
+        if (!routine[key]) throw new Error(`${name}.${key} is required.`);
+        textBox(routine[key], `${name}.${key}`, reference);
+      }
+      for (const key of ['list', 'panel'])
+        if (routine[key] !== undefined) textBox(routine[key], `${name}.${key}`, reference);
+      (routine.exclude ?? []).forEach((rect, i) =>
+        textBox(rect, `${name}.exclude.${i}`, reference),
+      );
+      const range = (value, key) => {
+        if (!Array.isArray(value) || value.length !== 2 || !(value[0] >= 0 && value[1] >= value[0]))
+          throw new Error(`${key} must be [min, max].`);
+      };
+      const color = (target, key) => {
+        if (!Array.isArray(target?.rgb) || target.rgb.length !== 3)
+          throw new Error(`${key}.rgb must be three integers 0–255.`);
+        if (target.tolerance === undefined) throw new Error(`${key}.tolerance is required.`);
+      };
+      color(routine.quest, `${name}.quest`);
+      range(routine.quest.pixels, `${name}.quest.pixels`);
+      range(routine.quest.size, `${name}.quest.size`);
+      color(routine.waypoint, `${name}.waypoint`);
+      if (!routine.waypoint.shapes?.length) throw new Error(`${name}.waypoint.shapes is required.`);
+      for (const shape of routine.waypoint.shapes)
+        for (const key of ['pixels', 'w', 'h']) range(shape[key], `${name}.waypoint.shapes.${key}`);
+      const { ring } = routine.waypoint;
+      positive(ring?.radius, `${name}.waypoint.ring.radius`);
+      int(ring, 'white', `${name}.waypoint.ring`, 0, 255);
+      int(ring, 'min', `${name}.waypoint.ring`, 1, 16);
+      for (const key of ['openMs', 'tapSettleMs', 'pollMs']) int(routine, key, name, 0, 5000);
+      int(routine, 'waypointAttempts', name, 1, 5);
+      if (routine.nearRadius !== undefined) positive(routine.nearRadius, `${name}.nearRadius`);
+      if (routine.distance !== undefined) textBox(routine.distance, `${name}.distance`, reference);
+      if (routine.nearMeters !== undefined) positive(routine.nearMeters, `${name}.nearMeters`);
+      continue;
+    }
     if (!joystick || !minimap) throw new Error(`${name} needs layout joystick and minimap.`);
+    const camera = () => {
+      const { camera } = layout;
+      if (!camera) throw new Error(`${name} needs a layout camera.`);
+      point(camera, 'camera', reference);
+      positive(camera.degreesPerPixel, 'camera.degreesPerPixel');
+      positive(camera.maxDrag, 'camera.maxDrag');
+      if (camera.deadzone !== undefined && !(camera.deadzone >= 0))
+        throw new Error('camera.deadzone must be >= 0.');
+    };
+    if (routine.type === 'approach') {
+      camera();
+      if (!enemy?.nearWidth) throw new Error(`${name} needs a layout enemy with nearWidth.`);
+      positive(routine.viewDegreesPerPixel, `${name}.viewDegreesPerPixel`);
+      int(routine, 'hopMs', name, 100, 5000);
+      int(routine, 'farHopMs', name, 100, 5000);
+      int(routine, 'dragSettleMs', name, 0, 5000);
+      for (const key of ['stuckLimit', 'lostLimit']) int(routine, key, name, 1, 10);
+      int(routine, 'scanSteps', name, 0, 12);
+      int(routine, 'arrowTurns', name, 0, 10);
+      if (routine.scanDeg !== undefined) positive(routine.scanDeg, `${name}.scanDeg`);
+      if (routine.stuckButton !== undefined) button(routine.stuckButton, `${name}.stuckButton`);
+      continue;
+    }
+    if (routine.type === 'navigate') {
+      camera();
+      const { marker } = routine;
+      const rgbTriplet = (value, key) => {
+        if (
+          value !== undefined &&
+          (!Array.isArray(value) ||
+            value.length !== 3 ||
+            !value.every((v) => Number.isInteger(v) && v >= 0 && v <= 255))
+        )
+          throw new Error(`${name}.marker.${key} must be three integers 0–255.`);
+      };
+      rgbTriplet(marker?.rgb, 'rgb');
+      rgbTriplet(marker?.min, 'min');
+      rgbTriplet(marker?.max, 'max');
+      const hasColor = marker?.rgb !== undefined && marker?.tolerance !== undefined;
+      const hasRange = marker?.min !== undefined && marker?.max !== undefined;
+      if (!hasColor && !hasRange)
+        throw new Error(
+          `${name}.marker needs rgb+tolerance or min+max to recognise the marker colour.`,
+        );
+      int(marker, 'tolerance', `${name}.marker`, 0, 255);
+      for (const key of ['hopMs', 'segmentMs', 'dragSettleMs', 'recoverMs'])
+        int(routine, key, name, 0, 5000);
+      for (const key of ['recoverAfter', 'stuckLimit']) int(routine, key, name, 1, 10);
+      for (const key of ['deflection', 'nearDeflection'])
+        if (routine[key] !== undefined && !(routine[key] > 0 && routine[key] <= 1))
+          throw new Error(`${name}.${key} must be in (0, 1].`);
+      for (const [screen, id] of Object.entries(routine.recover ?? {})) {
+        screenList([screen], `${name}.recover`);
+        button(id, `${name}.recover`);
+      }
+      if (routine.stuckButton !== undefined) button(routine.stuckButton, `${name}.stuckButton`);
+      continue;
+    }
     screenList(routine.turnScreens, `${name}.turnScreens`);
     for (const [screen, id] of Object.entries(routine.recover ?? {})) {
       screenList([screen], `${name}.recover`);
       button(id, `${name}.recover`);
     }
     if (routine.stuckButton !== undefined) button(routine.stuckButton, `${name}.stuckButton`);
+    if (routine.enemyStop && !enemy) throw new Error(`${name}.enemyStop needs a layout enemy.`);
     if (routine.deflection !== undefined && !(routine.deflection > 0 && routine.deflection <= 1))
       throw new Error(`${name}.deflection must be in (0, 1].`);
+    if (routine.forwardDeg !== undefined && !(routine.forwardDeg >= 0 && routine.forwardDeg <= 360))
+      throw new Error(`${name}.forwardDeg must be 0–360.`);
     for (const key of ['backstepMs', 'recoverMs']) int(routine, key, name, 0, 5000);
+    int(routine, 'hopMs', name, 100, 5000);
+    int(routine, 'hops', name, 1, 50);
     for (const key of ['recoverAfter', 'stuckLimit']) int(routine, key, name, 1, 10);
   }
 }
@@ -206,15 +346,64 @@ export function loadLayout(path) {
   return validateLayout(parsed);
 }
 
-// Game HUDs keep controls a fixed distance from their anchor edge and scale with the short side.
+// Game HUDs are designed for a canvas of `uiAspect` (width/height): screens wider than that scale
+// with height, narrower ones (tablets) with width. Without uiAspect the reference ratio is used.
+export function hudScale(screen, reference) {
+  const aspect = reference.uiAspect ?? reference.width / reference.height;
+  return Math.min(screen.height / reference.height, screen.width / (reference.height * aspect));
+}
+
+// Controls keep a fixed (scaled) distance from their anchor edge.
 export function resolvePoint(entry, screen, reference) {
   const [ax, ay] = ANCHORS[entry.anchor ?? 'top-left'];
-  const scale = Math.min(screen.width / reference.width, screen.height / reference.height);
+  const scale = hudScale(screen, reference);
   return {
     x: ax * screen.width + (entry.x - ax * reference.width) * scale,
     y: ay * screen.height + (entry.y - ay * reference.height) * scale,
     scale,
   };
+}
+
+export function resolveCamera(camera, screen, reference) {
+  const { x, y, scale } = resolvePoint(camera, screen, reference);
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    degreesPerPixel: camera.degreesPerPixel / scale,
+    maxDrag: camera.maxDrag * scale,
+    deadzone: (camera.deadzone ?? 0) * scale,
+  };
+}
+
+// The enemy HP bar detector on this screen: search bounds plus the reference-to-screen scale.
+export function resolveEnemy(enemy, screen, reference) {
+  return {
+    ...enemy,
+    bounds: resolveRect(enemy, screen, reference),
+    scale: hudScale(screen, reference),
+  };
+}
+
+// One sentence for Jev about visible enemies; the widest bar is taken as the nearest. Without a
+// bar, OCR-confirmed level labels (`labels`) mean enemies too far away to show one.
+export function describeEnemies(bars, enemy, screen, labels = [], arrow = null, reached = false) {
+  const sideOf = (x) => {
+    const dx = (x - screen.width / 2) / screen.width;
+    return dx < -0.12 ? 'to the left' : dx > 0.12 ? 'to the right' : 'ahead';
+  };
+  if (!bars.length && labels.length)
+    return `No enemy HP bar 敌人血条 is visible, but ${labels.length} distant enemy level label${labels.length > 1 ? 's' : ''} (${labels[0].text}) ${labels.length > 1 ? 'are' : 'is'} visible ${sideOf(labels[0].x)}: an enemy is far away, not within fighting range.`;
+  if (!bars.length && arrow) {
+    const d = arrow.deg;
+    const where =
+      Math.abs(d) > 135 ? 'behind' : d < -45 ? 'to the right' : d > 45 ? 'to the left' : 'ahead';
+    return `No enemy HP bar 敌人血条 is in view, but a red off-screen enemy arrow shows an enemy ${where}, outside the view (it may be attacking).`;
+  }
+  if (!bars.length) return 'No enemy HP bar 敌人血条 is visible.';
+  const [nearest] = bars;
+  const side = sideOf(nearest.x);
+  const close = reached || nearest.w >= enemy.nearWidth * enemy.scale;
+  return `${bars.length} enemy HP bar${bars.length > 1 ? 's' : ''} 敌人血条 visible; the nearest is ${side} and ${close ? `within fighting range${reached ? ' (the last approach reached it)' : ''}` : 'not yet within fighting range'}.`;
 }
 
 export function resolveRect(button, screen, reference) {
@@ -230,13 +419,13 @@ export function resolveRect(button, screen, reference) {
   return bounds.right > bounds.left && bounds.bottom > bounds.top ? bounds : null;
 }
 
-function sample(image, screen, x, y) {
+function sample(image, screen, x, y, radius = 1) {
   const ix = Math.round((x * image.width) / screen.width),
     iy = Math.round((y * image.height) / screen.height);
   const sum = [0, 0, 0];
   let n = 0;
-  for (let dy = -1; dy <= 1; dy++)
-    for (let dx = -1; dx <= 1; dx++) {
+  for (let dy = -radius; dy <= radius; dy++)
+    for (let dx = -radius; dx <= radius; dx++) {
       const px = ix + dx,
         py = iy + dy;
       if (px < 0 || py < 0 || px >= image.width || py >= image.height) continue;
@@ -247,20 +436,45 @@ function sample(image, screen, x, y) {
 }
 
 // The first screen whose probes all match wins; screens without probes are never detected.
+// `drift` probes mark a floating panel (e.g. prompt lists) whose position varies slightly between
+// devices: they are sampled at one pixel and must all match at one shared horizontal offset
+// within the screen's `drift.x` (reference px). Fixed probes are checked in place.
 export function detectScreen(image, screen, layout) {
   const results = {};
   let detected = null;
+  const check = (probe, dx, radius) => {
+    const { x, y } = resolvePoint(probe, screen, layout.reference);
+    const observed = sample(image, screen, x + dx, y, radius);
+    const tolerance = probe.tolerance ?? 40;
+    const matched =
+      observed !== null && observed.every((v, i) => Math.abs(v - probe.rgb[i]) <= tolerance);
+    return { x: Math.round(x + dx), y: Math.round(y), expected: probe.rgb, observed, matched };
+  };
+  const scale = hudScale(screen, layout.reference);
+  const step = screen.width / image.width;
   for (const [id, definition] of Object.entries(layout.screens)) {
-    const probes = (definition.probes ?? []).map((probe) => {
-      const { x, y } = resolvePoint(probe, screen, layout.reference);
-      const observed = sample(image, screen, x, y);
-      const tolerance = probe.tolerance ?? 40;
-      const matched =
-        observed !== null && observed.every((v, i) => Math.abs(v - probe.rgb[i]) <= tolerance);
-      return { x: Math.round(x), y: Math.round(y), expected: probe.rgb, observed, matched };
-    });
+    const all = definition.probes ?? [];
+    const fixed = all.filter((p) => !p.drift).map((p) => check(p, 0, 1));
+    const floating = all.filter((p) => p.drift);
+    let drifted = [],
+      offset;
+    if (floating.length) {
+      const limit = (definition.drift?.x ?? 0) * scale;
+      const offsets = [0];
+      for (let d = step; d <= limit + 1e-9; d += step) offsets.push(d, -d);
+      for (const dx of offsets) {
+        const attempt = floating.map((p) => check(p, dx, 0));
+        if (!drifted.length) drifted = attempt;
+        if (attempt.every((p) => p.matched)) {
+          drifted = attempt;
+          offset = Math.round(dx);
+          break;
+        }
+      }
+    }
+    const probes = [...fixed, ...drifted];
     const matched = probes.length > 0 && probes.every((p) => p.matched);
-    results[id] = { matched, probes };
+    results[id] = { matched, probes, ...(offset !== undefined ? { offset } : {}) };
     if (matched && !detected) detected = id;
   }
   return { screen: detected, results };
@@ -397,9 +611,15 @@ export function layoutRoutines(layout, screen, detected) {
     .map((routine) => ({
       routine,
       bounds:
-        routine.type === 'explore'
+        routine.type === 'explore' || routine.type === 'navigate' || routine.type === 'approach'
           ? joystickBounds()
-          : buttonBounds(routine.type === 'dialogue' ? routine.button : routine.attack),
+          : buttonBounds(
+              routine.type === 'dialogue'
+                ? routine.button
+                : routine.type === 'teleport'
+                  ? routine.open
+                  : routine.attack,
+            ),
     }));
 }
 
@@ -409,10 +629,44 @@ export function layoutObservation(
   base,
   image,
   layout,
-  { last, texts = {}, ocr, routines = false } = {},
+  { last, texts = {}, ocr, routines = false, enemyLabels = [] } = {},
 ) {
   const { screen: detected, results } = detectScreen(image, base.screen, layout);
-  const description = detected ? layout.screens[detected].description || detected : undefined;
+  let description = detected ? layout.screens[detected].description || detected : undefined;
+  if (detected && layout.enemy?.screens?.includes(detected)) {
+    const enemy = resolveEnemy(layout.enemy, base.screen, layout.reference);
+    const bars = enemyBars(image, enemy.bounds, base.screen, enemy, enemy.scale);
+    const arrow = !bars.length && enemyArrow(image, base.screen, enemy, enemy.scale);
+    // Bars flicker in width, so a code-verified `near` from the last approach wins over this frame.
+    const reached = last?.routine?.status === 'near';
+    description = `${description} ${describeEnemies(bars, enemy, base.screen, enemyLabels, arrow, reached)}`;
+    // Code-verified search outcome: without it Jev repeats a search that already turned a full circle.
+    if (
+      !bars.length &&
+      !enemyLabels.length &&
+      !arrow &&
+      last?.routine?.status === 'no_enemy' &&
+      last.routine.scans > 0
+    )
+      description = `${description} The last enemy search turned a full circle here and found no enemy; move somewhere else before searching again.`;
+  }
+  const lastRoutine =
+    last?.routine && layout.routines?.find((routine) => routine.id === last.routine.routine);
+  if (detected && lastRoutine?.type === 'teleport') {
+    const { status, target } = last.routine;
+    const sentence = {
+      teleported: `The last teleport was code-verified: it arrived at ${target} and the minimap changed.`,
+      unverified: `The last teleport tapped 传送 at ${target} and the world came back, but the minimap did not change; it may not have moved.`,
+      no_quest:
+        'The last teleport found no tracked quest on the world map; track a quest first, or press BACK.',
+      no_waypoint:
+        'The last teleport found no unlocked teleport waypoint near the tracked quest; press BACK and walk instead.',
+      no_teleport_button:
+        'The last teleport could not open a teleport panel at the waypoint nearest the quest; press BACK and walk instead.',
+      quest_near: `The last teleport did not teleport: code found the tracked quest close to you (${last.routine.questMetres !== undefined ? `${last.routine.questMetres}m away` : 'near you on the world map'}). ${last.routine.closed ? 'Walk to it with navigate.' : 'Press BACK, then walk to it with navigate.'}`,
+    }[status];
+    if (sentence) description = `${description} ${sentence}`;
+  }
   const hasProbes = Object.values(layout.screens).some((s) => s.probes?.length);
   const previousAction = lastActionEffect(last, detected || 'unknown', layout);
   // `match` rejects OCR noise from busy backgrounds; `requires` keeps a region only with another.
@@ -530,6 +784,11 @@ export function withLayout(device, layout, { recognizer } = {}) {
   device.layout = layout;
   const baseAct = device.act?.bind(device);
   let last;
+  // Devices may offer faster decoded frames (ADB_CAPTURE=raw); otherwise decode the PNG.
+  const capture = async () =>
+    typeof device.frame === 'function' ? device.frame() : decodePng(await device.screenshot());
+  const readText =
+    recognizer && (async (image, box) => (await recognizer.recognize(image, box))?.text ?? '');
   const observeLayout = async (base, image) => {
     const { screen: detected } = detectScreen(image, base.screen, layout);
     const regions = layoutTextRegions(layout, base.screen, detected);
@@ -547,10 +806,20 @@ export function withLayout(device, layout, { recognizer } = {}) {
         ocr = { error: error.message };
       }
     }
+    let enemyLabels = [];
+    if (recognizer && layout.enemy?.levelText && layout.enemy.screens?.includes(detected)) {
+      try {
+        const enemy = resolveEnemy(layout.enemy, base.screen, layout.reference);
+        ({ labels: enemyLabels } = await findEnemies(image, base.screen, enemy, readText));
+      } catch {
+        enemyLabels = [];
+      }
+    }
     return layoutObservation(base, image, layout, {
       last,
       texts,
       ocr,
+      enemyLabels,
       routines: typeof device.touch === 'function',
     });
   };
@@ -559,12 +828,12 @@ export function withLayout(device, layout, { recognizer } = {}) {
     if (typeof device.foregroundPackage === 'function') {
       const packageName = await device.foregroundPackage();
       if (!packages.has(packageName)) return baseObserve();
-      const image = decodePng(await device.screenshot());
+      const image = await capture();
       return observeLayout(screenOnlyObservation(device.deviceId, packageName, image), image);
     }
     const base = await baseObserve();
     if (!packages.has(base.phone.packageName)) return base;
-    return observeLayout(base, decodePng(await device.screenshot()));
+    return observeLayout(base, await capture());
   };
   // Game transitions animate for a moment; re-capture instead of showing Jev a half-drawn frame.
   device.observe = async () => {
@@ -609,7 +878,9 @@ export function withLayout(device, layout, { recognizer } = {}) {
         radius: layout.joystick.radius * joystick.scale,
       },
       minimap: layout.minimap && resolveRect(layout.minimap, dims, layout.reference),
-      enemyBounds: routine.enemy && resolveRect(routine.enemy, dims, layout.reference),
+      camera: layout.camera && resolveCamera(layout.camera, dims, layout.reference),
+      enemy: layout.enemy && resolveEnemy(layout.enemy, dims, layout.reference),
+      readText: readText || undefined,
       buttonCenter: (id) => {
         const b = resolveRect(
           layout.buttons.find((button) => button.id === id),
@@ -618,12 +889,14 @@ export function withLayout(device, layout, { recognizer } = {}) {
         );
         return { x: Math.floor((b.left + b.right) / 2), y: Math.floor((b.top + b.bottom) / 2) };
       },
-      // PNG capture: raw `screencap` returned stale frames on an LDPlayer emulator.
+      hudScale: hudScale(dims, layout.reference),
+      rect: (entry) => resolveRect(entry, dims, layout.reference),
       frame: async () => {
-        const image = decodePng(await device.screenshot());
+        const image = await capture();
         return { image, screen: detectScreen(image, dims, layout).screen };
       },
       touch: (event, px, py) => device.touch(event, px, py),
+      back: baseAct && (() => baseAct({ type: 'global', name: 'back' })),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => performance.now(),
       random: device.random ?? Math.random,
@@ -681,6 +954,7 @@ export function annotateScreenshot(png, layout, screen) {
       );
   return {
     png: encodePng(image),
+    scale: hudScale(screen, layout.reference),
     detection,
     buttons: buttons.map(({ button, bounds }) => ({ id: button.id, label: button.label, bounds })),
   };

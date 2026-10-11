@@ -10,13 +10,59 @@
   ],
   "reference": {
     "width": 2400,
-    "height": 1080
+    "height": 1080,
+    "uiAspect": 1.777778
   },
   "unknownRetries": 2,
   "settleMs": 1500,
   "screens": {
     "world_prompts_5": {
       "description": "Open world 大世界 with a list of 5 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
+        }
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -44,97 +90,290 @@
           "x": 1414,
           "y": 358,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 358,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 448,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 448,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 538,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 538,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 628,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 628,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 718,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 718,
           "rgb": [41, 52, 66],
-          "tolerance": 28
-        }
-      ],
-      "texts": [
-        {
-          "id": "obtained_header",
-          "label": "Item pickup notice header 获得提示",
-          "anchor": "left",
-          "x": 375,
-          "y": 518,
-          "w": 170,
-          "h": 40,
-          "match": "^获得"
+          "tolerance": 28,
+          "drift": true
         },
         {
-          "id": "obtained_item",
-          "label": "Item just obtained 刚获得的物品",
-          "anchor": "left",
-          "x": 490,
-          "y": 570,
-          "w": 410,
-          "h": 44,
-          "requires": "obtained_header"
+          "anchor": "center",
+          "x": 1444,
+          "y": 334,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 334,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 382,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 382,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 424,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 424,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 472,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 472,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 604,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 604,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 652,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 652,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 694,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 694,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 742,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 742,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
         }
       ]
     },
     "world_prompts_4": {
       "description": "Open world 大世界 with a list of 4 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
+        }
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -162,83 +401,242 @@
           "x": 1414,
           "y": 403,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 403,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 493,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 493,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 583,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 583,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 673,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 673,
           "rgb": [41, 52, 66],
-          "tolerance": 28
-        }
-      ],
-      "texts": [
-        {
-          "id": "obtained_header",
-          "label": "Item pickup notice header 获得提示",
-          "anchor": "left",
-          "x": 375,
-          "y": 518,
-          "w": 170,
-          "h": 40,
-          "match": "^获得"
+          "tolerance": 28,
+          "drift": true
         },
         {
-          "id": "obtained_item",
-          "label": "Item just obtained 刚获得的物品",
-          "anchor": "left",
-          "x": 490,
-          "y": 570,
-          "w": 410,
-          "h": 44,
-          "requires": "obtained_header"
+          "anchor": "center",
+          "x": 1444,
+          "y": 379,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 379,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 427,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 427,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 469,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 469,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 517,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 517,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 559,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 559,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 607,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 607,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 649,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 649,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 697,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 697,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
         }
       ]
     },
     "world_prompts_3": {
       "description": "Open world 大世界 with a list of 3 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
+        }
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -266,69 +664,194 @@
           "x": 1414,
           "y": 448,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 448,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 538,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 538,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 628,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 628,
           "rgb": [41, 52, 66],
-          "tolerance": 28
-        }
-      ],
-      "texts": [
-        {
-          "id": "obtained_header",
-          "label": "Item pickup notice header 获得提示",
-          "anchor": "left",
-          "x": 375,
-          "y": 518,
-          "w": 170,
-          "h": 40,
-          "match": "^获得"
+          "tolerance": 28,
+          "drift": true
         },
         {
-          "id": "obtained_item",
-          "label": "Item just obtained 刚获得的物品",
-          "anchor": "left",
-          "x": 490,
-          "y": 570,
-          "w": 410,
-          "h": 44,
-          "requires": "obtained_header"
+          "anchor": "center",
+          "x": 1444,
+          "y": 424,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 424,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 472,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 472,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 604,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 604,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 652,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 652,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
         }
       ]
     },
     "world_prompts_2": {
       "description": "Open world 大世界 with a list of 2 interaction prompts 交互提示 on the right (for example items to pick up, 调查 investigate, or an NPC to talk to), top to bottom; this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      "texts": [
+        {
+          "id": "obtained_header",
+          "label": "Item pickup notice header 获得提示",
+          "anchor": "left",
+          "x": 375,
+          "y": 518,
+          "w": 170,
+          "h": 40,
+          "match": "^获得"
+        },
+        {
+          "id": "obtained_item",
+          "label": "Item just obtained 刚获得的物品",
+          "anchor": "left",
+          "x": 490,
+          "y": 570,
+          "w": 410,
+          "h": 44,
+          "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
+        }
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -356,30 +879,101 @@
           "x": 1414,
           "y": 493,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 493,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1414,
           "y": 583,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 583,
           "rgb": [41, 52, 66],
-          "tolerance": 28
+          "tolerance": 28,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 469,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 469,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 517,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 517,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 559,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 559,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 607,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 607,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
         }
-      ],
+      ]
+    },
+    "world_talk": {
+      "description": "Open world 大世界 (no conversation in progress) with the combat HUD, plus a talk prompt 对话提示 (speech bubble with an NPC name) on the right because an NPC is nearby; this is already the open world. Tapping the prompt starts a conversation. System BACK here does not go back; it asks to quit the game.",
       "texts": [
         {
           "id": "obtained_header",
@@ -400,11 +994,31 @@
           "w": 410,
           "h": 44,
           "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
         }
-      ]
-    },
-    "world_talk": {
-      "description": "Open world 大世界 (no conversation in progress) with the combat HUD, plus a talk prompt 对话提示 (speech bubble with an NPC name) on the right because an NPC is nearby; this is already the open world. Tapping the prompt starts a conversation. System BACK here does not go back; it asks to quit the game.",
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -432,30 +1046,37 @@
           "x": 1440,
           "y": 530,
           "rgb": [255, 255, 255],
-          "tolerance": 25
+          "tolerance": 25,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1455,
           "y": 540,
           "rgb": [255, 255, 255],
-          "tolerance": 25
+          "tolerance": 25,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1440,
           "y": 520,
           "rgb": [37, 49, 62],
-          "tolerance": 35
+          "tolerance": 35,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1418,
           "y": 537,
           "rgb": [45, 54, 66],
-          "tolerance": 35
+          "tolerance": 35,
+          "drift": true
         }
-      ],
+      ]
+    },
+    "world_prompts_1": {
+      "description": "Open world 大世界 with one interaction prompt 交互提示 on the right (pick up, investigate, open or activate something nearby); this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
       "texts": [
         {
           "id": "obtained_header",
@@ -476,11 +1097,31 @@
           "w": 410,
           "h": 44,
           "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
         }
-      ]
-    },
-    "world_prompts_1": {
-      "description": "Open world 大世界 with one interaction prompt 交互提示 on the right (pick up, investigate, open or activate something nearby); this is already the open world, with no conversation in progress. The prompt labels cannot be read here. System BACK here does not go back; it asks to quit the game.",
+      ],
+      "drift": {
+        "x": 24
+      },
       "probes": [
         {
           "anchor": "top-left",
@@ -508,36 +1149,48 @@
           "x": 1414,
           "y": 538,
           "rgb": [91, 92, 88],
-          "tolerance": 22
+          "tolerance": 22,
+          "drift": true
         },
         {
           "anchor": "center",
           "x": 1424,
           "y": 538,
           "rgb": [41, 52, 66],
-          "tolerance": 28
-        }
-      ],
-      "texts": [
-        {
-          "id": "obtained_header",
-          "label": "Item pickup notice header 获得提示",
-          "anchor": "left",
-          "x": 375,
-          "y": 518,
-          "w": 170,
-          "h": 40,
-          "match": "^获得"
+          "tolerance": 28,
+          "drift": true
         },
         {
-          "id": "obtained_item",
-          "label": "Item just obtained 刚获得的物品",
-          "anchor": "left",
-          "x": 490,
-          "y": 570,
-          "w": 410,
-          "h": 44,
-          "requires": "obtained_header"
+          "anchor": "center",
+          "x": 1444,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 514,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1444,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
+        },
+        {
+          "anchor": "center",
+          "x": 1484,
+          "y": 562,
+          "rgb": [44, 54, 62],
+          "tolerance": 14,
+          "drift": true
         }
       ]
     },
@@ -586,6 +1239,26 @@
           "w": 410,
           "h": 44,
           "requires": "obtained_header"
+        },
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance"
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离",
+          "anchor": "top-left",
+          "x": 250,
+          "y": 360,
+          "w": 130,
+          "h": 32,
+          "match": "^\\d+\\s*m$"
         }
       ]
     },
@@ -613,6 +1286,14 @@
           "rgb": [80, 91, 112],
           "tolerance": 35
         }
+      ]
+    },
+    "world_map": {
+      "description": "World map 大地图 (opened from the minimap), with a zoom slider on the left; tapping a map icon opens its details on the right",
+      "probes": [
+        { "anchor": "left", "x": 148, "y": 408, "rgb": [199, 194, 185], "tolerance": 25 },
+        { "anchor": "left", "x": 148, "y": 672, "rgb": [217, 211, 202], "tolerance": 25 },
+        { "anchor": "bottom-right", "x": 2212, "y": 1036, "rgb": [207, 203, 193], "tolerance": 25 }
       ]
     },
     "menu": {
@@ -805,6 +1486,16 @@
         }
       ]
     },
+    "revive_dialog": {
+      "description": "Revive dialog 使用道具复苏角色 in the middle of the screen, opened by switching to a downed teammate: it offers food items to revive them; 取消 cancel on the left closes it without using an item",
+      "probes": [
+        { "anchor": "center", "x": 812, "y": 868, "rgb": [236, 229, 216], "tolerance": 20 },
+        { "anchor": "center", "x": 1612, "y": 868, "rgb": [236, 229, 216], "tolerance": 20 },
+        { "anchor": "center", "x": 1200, "y": 650, "rgb": [63, 70, 88], "tolerance": 16 },
+        { "anchor": "center", "x": 712, "y": 300, "rgb": [62, 69, 86], "tolerance": 16 },
+        { "anchor": "center", "x": 1712, "y": 300, "rgb": [62, 69, 86], "tolerance": 16 }
+      ]
+    },
     "world_swimming": {
       "description": "Open world 大世界 while the character swims: jump, attacks and skills are hidden; sprint dashes through the water and drains stamina.",
       "probes": [
@@ -853,8 +1544,8 @@
   },
   "joystick": {
     "anchor": "bottom-left",
-    "x": 330,
-    "y": 830,
+    "x": 430,
+    "y": 820,
     "radius": 130
   },
   "minimap": {
@@ -864,12 +1555,77 @@
     "w": 180,
     "h": 180
   },
+  "camera": {
+    "anchor": "center",
+    "x": 1512,
+    "y": 450,
+    "degreesPerPixel": 0.45,
+    "deadzone": 22,
+    "maxDrag": 420
+  },
+  "enemy": {
+    "label": "Enemy HP bars 敌人血条",
+    "anchor": "top-left",
+    "x": 1075,
+    "y": 505,
+    "w": 1650,
+    "h": 710,
+    "rgb": [250, 92, 92],
+    "tolerance": 22,
+    "minWidth": 16,
+    "maxHeight": 12,
+    "nearWidth": 80,
+    "levelText": "^Lv\\.?\\d",
+    "arrowRing": { "dx": 0, "dy": 20, "inner": 330, "outer": 620 },
+    "screens": [
+      "world",
+      "world_talk",
+      "world_prompts_1",
+      "world_prompts_2",
+      "world_prompts_3",
+      "world_prompts_4",
+      "world_prompts_5"
+    ]
+  },
   "routines": [
+    {
+      "id": "navigate",
+      "type": "navigate",
+      "label": "Go to quest marker 前往任务标记",
+      "description": "Code turns the camera toward the tracked quest's yellow marker on the minimap and runs toward it for up to 20 seconds, re-aiming as it goes. It stops when the marker reaches the character (arrived), when someone to talk to appears, when the screen leaves the open world, or when the character is stuck. The quest distance text shows the remaining distance; for long trips use it again while the distance keeps shrinking.",
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5",
+        "world_climbing",
+        "world_swimming"
+      ],
+      "stopScreens": ["world_talk"],
+      "recover": {
+        "world_climbing": "normal_attack"
+      },
+      "recoverAfter": 10,
+      "stuckButton": "jump",
+      "marker": {
+        "rgb": [251, 232, 2],
+        "tolerance": 45,
+        "min": [180, 120, 0],
+        "max": [255, 255, 90]
+      },
+      "turnDeg": 20,
+      "segmentMs": 600,
+      "stuckLimit": 5,
+      "maxMs": 25000
+    },
     {
       "id": "explore",
       "type": "explore",
       "label": "Explore 随机游走",
-      "description": "Code walks the character in random directions for up to 15 seconds with the joystick and stops as soon as a new interaction prompt appears, the screen leaves the open world, or the character stays stuck. Use it to look for something to pick up, talk to or interact with.",
+      "description": "Code walks the character a short distance roughly straight ahead (where the camera faces, within 30° either side): up to 5 short hops of about one step each, checking the screen standing still after every hop, and stops as soon as a new interaction prompt appears, a new enemy HP bar appears (enemy), the screen leaves the open world, or the character stays stuck. Use it to look for something to pick up, talk to or interact with; if nothing appears, use it again to keep exploring further.",
       "screens": [
         "world",
         "world_talk",
@@ -894,8 +1650,12 @@
       },
       "stuckButton": "jump",
       "recoverAfter": 3,
-      "maxMs": 15000,
+      "maxMs": 20000,
+      "hopMs": 700,
+      "hops": 5,
       "deflection": 0.5,
+      "enemyStop": true,
+      "forwardDeg": 60,
       "turnScreens": ["world_swimming"]
     },
     {
@@ -925,7 +1685,7 @@
       "id": "combat",
       "type": "combat",
       "label": "Fight 战斗",
-      "description": "Code fights nearby enemies for up to 20 seconds: each active character uses elemental skill, burst and a few normal attacks, then the next teammate is switched in. It does not walk towards enemies and cannot see them yet, so it always runs to its time limit unless the screen leaves the open world.",
+      "description": "Code fights nearby enemies: each active character uses elemental skill, burst and a few normal attacks, then the next teammate who is still standing is switched in (downed teammates are skipped; a revive dialog is closed with 取消 without using items). It always fights one round first (attacks turn towards the nearest enemy), then watches for red enemy HP bars: if none appeared it stops (no_enemy), and once they have been gone for 2 checks in a row it stops (clear). It does not walk towards enemies, so get close first; otherwise it runs up to 20 seconds.",
       "screens": [
         "world",
         "world_talk",
@@ -939,8 +1699,106 @@
       "skill": "elemental_skill",
       "burst": "elemental_burst",
       "switchButtons": ["teammate_1", "teammate_2", "teammate_3"],
+      "alivePortrait": {
+        "dx": 41,
+        "dy": -3,
+        "w": 40,
+        "h": 40,
+        "minSaturation": 30,
+        "minPixels": 150
+      },
+      "recover": { "revive_dialog": "revive_cancel" },
       "attackTaps": 4,
+      "clearFrames": 2,
       "maxMs": 20000
+    },
+    {
+      "id": "approach",
+      "type": "approach",
+      "label": "Approach enemy 接近敌人",
+      "description": "Code looks for the nearest enemy: an HP bar, or a distant enemy's level label (Lv.) when it is too far away for a bar. If none is in view it first turns towards a red off-screen enemy arrow and walks a step towards it, and otherwise turns the camera around in place (a full circle, ending facing the same way as before). It then walks towards the enemy, turning the camera to keep it centred, and stops once the enemy is within fighting range (near), when no enemy is found all around (no_enemy), when it loses sight of the enemy (lost), or when the character is stuck. Use it whenever an enemy is visible or indicated, even far away, and to search for enemies before exploring further; use Fight 战斗 after it reports the enemy is near.",
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5"
+      ],
+      "viewDegreesPerPixel": 0.035,
+      "turnDeg": 5,
+      "scanSteps": 5,
+      "scanDeg": 60,
+      "hopMs": 800,
+      "farHopMs": 2500,
+      "stuckButton": "jump",
+      "stuckLimit": 3,
+      "lostLimit": 3,
+      "maxMs": 45000
+    },
+    {
+      "id": "teleport",
+      "type": "teleport",
+      "label": "Teleport near quest 传送到任务附近",
+      "description": "Code opens the world map, centres it on the tracked quest, picks the unlocked teleport waypoint or Statue of The Seven nearest to the quest, confirms its teleport panel by OCR, taps 传送 once and waits for the open world to load. Use it when the tracked quest is far away (hundreds of metres or more) instead of walking; if code finds the quest close to you on the map it closes the map without teleporting, and you should walk there with navigate. On failure the world map may stay open; press BACK to close it.",
+      "screens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5",
+        "world_swimming",
+        "world_map"
+      ],
+      "doneScreens": [
+        "world",
+        "world_talk",
+        "world_prompts_1",
+        "world_prompts_2",
+        "world_prompts_3",
+        "world_prompts_4",
+        "world_prompts_5",
+        "world_swimming"
+      ],
+      "open": "minimap",
+      "mapScreen": "world_map",
+      "quest": {
+        "rgb": [95, 145, 229],
+        "tolerance": [30, 30, 25],
+        "pixels": [60, 110],
+        "size": [13, 19]
+      },
+      "waypoint": {
+        "rgb": [50, 152, 216],
+        "tolerance": 35,
+        "shapes": [
+          { "pixels": [80, 120], "w": [10, 14], "h": [13, 16] },
+          { "pixels": [120, 200], "w": [30, 42], "h": [20, 30] }
+        ],
+        "ring": { "radius": 16, "white": 215, "min": 4 }
+      },
+      "exclude": [
+        { "anchor": "top-left", "x": 321, "y": 86, "w": 416, "h": 172 },
+        { "anchor": "top-left", "x": 1200, "y": 50, "w": 2400, "h": 100 }
+      ],
+      "centerRadius": 40,
+      "nearRadius": 100,
+      "distance": { "anchor": "top-left", "x": 250, "y": 360, "w": 130, "h": 32 },
+      "nearMeters": 150,
+      "title": { "anchor": "top-right", "x": 1849, "y": 28, "w": 550, "h": 56 },
+      "button": { "anchor": "top-right", "x": 1974, "y": 980, "w": 300, "h": 56 },
+      "list": { "anchor": "top-right", "x": 1649, "y": 730, "w": 450, "h": 340, "rowH": 56 },
+      "panel": { "anchor": "top-right", "x": 1937, "y": 540, "w": 926, "h": 1080 },
+      "targetText": "传送锚点|七天神像",
+      "buttonText": "传送",
+      "openMs": 1500,
+      "tapSettleMs": 900,
+      "waypointAttempts": 2,
+      "movedDiff": 30,
+      "maxMs": 30000
     }
   ],
   "buttons": [
@@ -1662,6 +2520,17 @@
       "w": 340,
       "h": 110,
       "screens": ["confirm_dialog"]
+    },
+    {
+      "id": "revive_cancel",
+      "label": "Cancel revive 取消",
+      "description": "Closes the revive dialog without using an item",
+      "anchor": "center",
+      "x": 934,
+      "y": 868,
+      "w": 400,
+      "h": 70,
+      "screens": ["revive_dialog"]
     }
   ]
 }

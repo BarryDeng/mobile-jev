@@ -8,6 +8,7 @@ import { createDevice } from './create-device.mjs';
 import {
   annotateScreenshot,
   detectScreen,
+  hudScale,
   layoutRoutines,
   loadLayout,
   resolveRect,
@@ -94,6 +95,32 @@ test('anchored buttons keep their edge distance on wider screens', () => {
   });
 });
 
+test('uiAspect keeps the HUD scale on narrower phones and scales tablets by width', () => {
+  const reference = { width: 2400, height: 1080, uiAspect: 16 / 9 };
+  const attack = { id: 'a', label: 'A', anchor: 'bottom-right', x: 1920, y: 830, w: 100, h: 100 };
+  const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual}`);
+  near(hudScale({ width: 2376, height: 1080 }, reference), 1);
+  near(hudScale({ width: 1920, height: 1080 }, reference), 1);
+  near(hudScale({ width: 2560, height: 1600 }, reference), 2560 / 1920);
+  // Without uiAspect the reference ratio applies (the previous behaviour).
+  assert.equal(hudScale({ width: 1920, height: 1080 }, { width: 2400, height: 1080 }), 0.8);
+  assert.deepEqual(resolveRect(attack, { width: 2376, height: 1080 }, reference), {
+    left: 1846,
+    top: 780,
+    right: 1946,
+    bottom: 880,
+  });
+  const base = { name: 'x', packageNames: [GAME], buttons: [] };
+  assert.throws(
+    () => validateLayout({ ...base, reference: { width: 16, height: 9, uiAspect: 3 } }),
+    /uiAspect/,
+  );
+  assert.throws(
+    () => validateLayout({ ...base, reference: { width: 16, height: 9, uiAspect: 0 } }),
+    /uiAspect/,
+  );
+});
+
 test('layout validation rejects unknown screens and duplicate ids', () => {
   const base = { name: 'x', packageNames: [GAME], reference: { width: 10, height: 10 } };
   assert.throws(
@@ -129,6 +156,15 @@ test('layout validation rejects unknown screens and duplicate ids', () => {
     withRoutine({ minimap, routines: [{ ...routine, stopScreens: ['nope'] }] }),
     /unknown screen/,
   );
+  const go = { ...routine, id: 'go', type: 'navigate', marker: { rgb: [250, 230, 0] } };
+  assert.throws(withRoutine({ minimap, routines: [go] }), /needs a layout camera/);
+  const camera = { x: 50, y: 40, degreesPerPixel: 0.5, maxDrag: 30 };
+  assert.throws(withRoutine({ minimap, camera, routines: [go] }), /recognise the marker colour/);
+  withRoutine({
+    minimap,
+    camera,
+    routines: [{ ...go, marker: { ...go.marker, tolerance: 40 } }],
+  })();
   // Dialogue and combat drive buttons, so they need neither joystick nor minimap.
   const talk = { id: 'talk', type: 'dialogue', label: 'Talk', screens: ['menu'] };
   assert.throws(() => validateLayout({ ...layout, routines: [talk] }), /button is required/);
@@ -144,13 +180,11 @@ test('layout validation rejects unknown screens and duplicate ids', () => {
     /unknown button/,
   );
   const enemy = { x: 100, y: 50, w: 100, h: 50, rgb: [255, 0], tolerance: 20 };
-  assert.throws(
-    () => validateLayout({ ...layout, routines: [{ ...fight, attack: 'attack', enemy }] }),
-    /enemy.rgb/,
-  );
+  assert.throws(() => validateLayout({ ...layout, enemy }), /enemy.rgb/);
   const fighting = validateLayout({
     ...layout,
-    routines: [{ ...fight, attack: 'attack', enemy: { ...enemy, rgb: [255, 0, 0] } }],
+    enemy: { ...enemy, rgb: [255, 0, 0] },
+    routines: [{ ...fight, attack: 'attack' }],
   });
   assert.deepEqual(layoutRoutines(fighting, { width: 200, height: 100 }, 'world')[0].bounds, {
     left: 170,
@@ -158,6 +192,15 @@ test('layout validation rejects unknown screens and duplicate ids', () => {
     right: 190,
     bottom: 90,
   });
+  // Approaching an enemy needs a camera and a layout enemy with a fighting distance.
+  const near = { id: 'near', type: 'approach', label: 'Near', screens: ['world'] };
+  const approachLayout = { minimap, camera, routines: [{ ...near, viewDegreesPerPixel: 0.04 }] };
+  assert.throws(withRoutine(approachLayout), /needs a layout enemy with nearWidth/);
+  withRoutine({ ...approachLayout, enemy: { ...enemy, rgb: [255, 0, 0], nearWidth: 50 } })();
+  assert.throws(
+    withRoutine({ minimap, routines: [{ ...routine, hopMs: 500, enemyStop: true }] }),
+    /enemyStop needs a layout enemy/,
+  );
 });
 
 test('probes identify the current screen', () => {
@@ -172,6 +215,58 @@ test('probes identify the current screen', () => {
   );
   assert.equal(detectScreen(small, screen, layout).screen, 'menu');
   assert.equal(detectScreen(decodePng(image(200, 100)), screen, layout).screen, null);
+});
+
+test('drift probes find a floating panel at a shared horizontal offset', () => {
+  const screen = { width: 200, height: 100 };
+  const panel = validateLayout({
+    ...layout,
+    screens: {
+      prompt: {
+        drift: { x: 6 },
+        probes: [
+          { x: 10, y: 10, rgb: [250, 0, 0] },
+          { x: 100, y: 50, anchor: 'center', rgb: [200, 200, 200], drift: true },
+          { x: 104, y: 50, anchor: 'center', rgb: [0, 200, 0], drift: true },
+        ],
+      },
+    },
+    buttons: [{ id: 'ok', label: 'OK', x: 10, y: 10, w: 4, h: 4 }],
+  });
+  const hud = { left: 5, top: 5, right: 15, bottom: 15, rgb: [240, 10, 10] };
+  // A 1 px rim followed by the panel body, shifted 4 px left of the calibrated place.
+  const shifted = (dx) =>
+    decodePng(
+      image(
+        200,
+        100,
+        [0, 0, 0],
+        [
+          hud,
+          { left: 100 + dx, top: 45, right: 101 + dx, bottom: 55, rgb: [200, 200, 200] },
+          { left: 101 + dx, top: 45, right: 110 + dx, bottom: 55, rgb: [0, 200, 0] },
+        ],
+      ),
+    );
+  const found = detectScreen(shifted(-4), screen, panel);
+  assert.equal(found.screen, 'prompt');
+  assert.equal(found.results.prompt.offset, -4);
+  assert.equal(detectScreen(shifted(0), screen, panel).results.prompt.offset, 0);
+  // Beyond drift.x, or with only the rim, the panel is not detected.
+  assert.equal(detectScreen(shifted(-9), screen, panel).screen, null);
+  const rimOnly = decodePng(
+    image(
+      200,
+      100,
+      [0, 0, 0],
+      [hud, { left: 96, top: 45, right: 97, bottom: 55, rgb: [200, 200, 200] }],
+    ),
+  );
+  assert.equal(detectScreen(rimOnly, screen, panel).screen, null);
+  assert.throws(
+    () => validateLayout({ ...panel, screens: { prompt: { drift: { x: -1 }, probes: [] } } }),
+    /drift\.x/,
+  );
 });
 
 function fakeGame({ foreground = GAME, png, profile = layout, recognizer }) {
@@ -450,6 +545,10 @@ test('declared text regions of the detected screen are read into elements Jev se
   );
   notice = 'Obtained x1';
 
+  // OCR punctuation and spacing noise alone does not make the decision stale.
+  label = 'Pick up，lotus」';
+  await device.act({ type: 'tap-element', elementId: 'layout.attack' }, { expected: observation });
+
   // A changed caption on the target makes the decision stale before any input.
   label = 'Open chest';
   await assert.rejects(
@@ -502,7 +601,7 @@ test('declared text regions of the detected screen are read into elements Jev se
   );
 });
 
-function layoutRun(signatures, actions) {
+function layoutRun(signatures, actions, receipt = {}) {
   let frame = 0;
   const observed = [];
   const device = {
@@ -519,7 +618,7 @@ function layoutRun(signatures, actions) {
         layout: { screen: 'world', signature: signatures[Math.min(i, signatures.length - 1)] },
       };
     },
-    act: async () => ({}),
+    act: async () => receipt,
   };
   let n = 0;
   const policy = {
@@ -557,6 +656,16 @@ test('the same game control used twice without a visible change stops the run', 
   assert.equal(
     (await layoutRun(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], ['layout.attack'])).result.status,
     'step_limit',
+  );
+  // A routine that moved the character is progress even when the screen reads the same.
+  const walk = 'layout-routine.explore';
+  assert.equal(
+    (await layoutRun(['a'], [walk], { routine: { status: 'walked', moved: true } })).result.status,
+    'step_limit',
+  );
+  assert.equal(
+    (await layoutRun(['a'], [walk], { routine: { status: 'stuck', moved: false } })).result.status,
+    'no_progress',
   );
 });
 

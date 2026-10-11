@@ -11,6 +11,9 @@ function targetMeaning(observation, id) {
   const target = observation.elements.find((element) => element.id === id);
   if (!target) return null;
   const meaning = Object.fromEntries(Object.entries(target).filter(([key]) => key !== 'bounds'));
+  // Fixed-layout text comes from OCR, which flips punctuation between frames (，vs 」).
+  if (id.startsWith('layout') && typeof meaning.text === 'string')
+    meaning.text = meaning.text.replace(/[^\p{L}\p{N}]/gu, '');
   return JSON.stringify({
     ...meaning,
     content: observation.elements

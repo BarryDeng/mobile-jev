@@ -193,9 +193,13 @@ export async function runAgent({
     entry.after = after.fingerprint;
     entry.screenChanged = observation.fingerprint !== after.fingerprint;
     // Game frames always differ in pixels; the layout signature (screen and read texts) does not.
+    // A routine that reports it moved the character made progress even when the screen reads alike.
     const layoutSignature = observation.layout?.signature;
     entry.layoutUnchanged =
-      !isWait && !!layoutSignature && layoutSignature === after.layout?.signature;
+      !isWait &&
+      !receipt?.routine?.moved &&
+      !!layoutSignature &&
+      layoutSignature === after.layout?.signature;
     await onObservation({ step, observation: after, screenChanged: entry.screenChanged });
     observation = after;
     const previous = history.at(-2);

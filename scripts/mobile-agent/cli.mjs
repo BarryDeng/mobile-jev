@@ -130,6 +130,7 @@ async function main() {
       app: observation.phone.packageName,
       inLayoutApp: device.layout.packageNames.includes(observation.phone.packageName),
       screen: observation.screen,
+      scale: report.scale,
       detectedScreen: report.detection.screen,
       probes: report.detection.results,
       buttons: report.buttons,

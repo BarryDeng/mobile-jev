@@ -112,6 +112,29 @@ test('ADB raw touch events hold a pointer for game routines', async () => {
   await assert.rejects(device.touch('down', -1, 1), /nonnegative/);
 });
 
+test('ADB raw capture decodes screencap pixels without PNG encoding', async () => {
+  const raw = (headerWords, format = 1) => {
+    const header = Buffer.alloc(headerWords * 4);
+    header.writeUInt32LE(2, 0);
+    header.writeUInt32LE(1, 4);
+    header.writeUInt32LE(format, 8);
+    return Buffer.concat([header, Buffer.from([1, 2, 3, 255, 4, 5, 6, 255])]);
+  };
+  for (const words of [3, 4]) {
+    const { calls, run } = fakeAdb();
+    const device = new AdbDevice({ deviceId: 'SERIAL1', run, capture: 'raw' });
+    const original = run;
+    device.run = async (args) => (args[3] === 'screencap' ? raw(words) : original(args));
+    const image = await device.frame();
+    assert.deepEqual([image.width, image.height, image.channels], [2, 1, 4]);
+    assert.deepEqual([...image.pixels.subarray(4, 7)], [4, 5, 6]);
+    assert.equal(calls.length, 0);
+  }
+  const device = new AdbDevice({ deviceId: 'SERIAL1', capture: 'raw', run: async () => raw(4, 5) });
+  await assert.rejects(device.frame(), /pixel format 5/);
+  assert.throws(() => new AdbDevice({ deviceId: 'SERIAL1', capture: 'jpeg' }), /png or raw/);
+});
+
 test('backend factory defaults to Mobilerun and selects ADB explicitly', () => {
   assert.ok(createDevice({ deviceId: 'x' }) instanceof MobilerunDevice);
   assert.ok(!(createDevice({ deviceId: 'x' }) instanceof AdbDevice));

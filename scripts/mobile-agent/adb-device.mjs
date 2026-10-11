@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { MobilerunDevice, summarizeState } from './device.mjs';
+import { decodePng } from './png.mjs';
 
 // Android keycodes for the Mobilerun global-action numbers used by MobilerunDevice.act.
 const GLOBAL_KEYCODES = { 1: 4, 2: 3, 3: 187 };
@@ -131,6 +132,24 @@ export function labelFromPackage(packageName) {
 
 const quote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
+// `screencap` without -p: width, height, format (u32 LE), plus a u32 colour space since Android 9,
+// then RGBA_8888 rows. Other pixel formats are rejected rather than misread.
+export function decodeRawScreencap(bytes) {
+  if (bytes.length < 12) throw new Error('Raw screenshot is truncated.');
+  const width = bytes.readUInt32LE(0),
+    height = bytes.readUInt32LE(4),
+    format = bytes.readUInt32LE(8);
+  const size = width * height * 4;
+  const header = bytes.length - size;
+  if (!width || !height || (header !== 12 && header !== 16))
+    throw new Error('Raw screenshot has an unexpected size.');
+  if (format !== 1 && format !== 2)
+    throw new Error(
+      `Raw screenshot pixel format ${format} is not RGBA/RGBX 8888; use ADB_CAPTURE=png.`,
+    );
+  return { width, height, channels: 4, pixels: bytes.subarray(header) };
+}
+
 function runAdb(adbPath, args, { timeoutMs = 30_000 } = {}) {
   return new Promise((resolve, reject) => {
     execFile(
@@ -158,6 +177,7 @@ export class AdbDevice extends MobilerunDevice {
     deviceId = process.env.ADB_SERIAL || undefined,
     adbPath = process.env.ADB_PATH || 'adb',
     appLabels = process.env.ADB_APP_LABELS,
+    capture = process.env.ADB_CAPTURE || 'png',
     textCompletionMode,
     run = (args, options) => runAdb(adbPath, args, options),
   } = {}) {
@@ -165,6 +185,8 @@ export class AdbDevice extends MobilerunDevice {
     this.deviceId = deviceId; // Do not inherit MOBILERUN_DEVICE_ID.
     this.baseUrl = 'adb';
     this.run = run;
+    if (!['png', 'raw'].includes(capture)) throw new Error('ADB_CAPTURE must be png or raw.');
+    this.capture = capture;
     try {
       this.appLabels = typeof appLabels === 'string' ? JSON.parse(appLabels) : appLabels || {};
     } catch {
@@ -287,6 +309,13 @@ export class AdbDevice extends MobilerunDevice {
     if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
       throw new Error('Screenshot response is not a PNG.');
     return bytes;
+  }
+
+  // Decoded pixels for layout profiles. `raw` skips on-device PNG encoding (about 2x faster on a
+  // phone), but some emulators (LDPlayer) return stale raw frames, so PNG stays the default.
+  async frame() {
+    if (this.capture === 'png') return decodePng(await this.screenshot());
+    return decodeRawScreencap(await this.shell('screencap'));
   }
 
   // Raw single-pointer events: a held pointer (down, moves, up) steers a game's virtual joystick.
