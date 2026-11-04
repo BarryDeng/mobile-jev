@@ -2,7 +2,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { StaleObservationError, assertFresh } from './device.mjs';
 import { decodePng, encodePng, rgbAt, toRgba } from './png.mjs';
-import { ROUTINES, ROUTINE_TYPES, enemyArrow, enemyBars, findEnemies } from './routines.mjs';
+import {
+  ROUTINES,
+  ROUTINE_TYPES,
+  enemyArrow,
+  enemyBars,
+  findEnemies,
+  hudDistance,
+} from './routines.mjs';
 
 const ANCHORS = {
   'top-left': [0, 0],
@@ -34,7 +41,7 @@ function point(entry, name, reference) {
 // A layout profile describes fixed on-screen controls for apps without an accessibility tree.
 export function validateLayout(layout) {
   if (!layout || typeof layout !== 'object') throw new Error('Layout must be a JSON object.');
-  const { name, packageNames, reference, screens = {}, buttons } = layout;
+  const { name, packageNames, reference, screens = {}, statusTexts = [], buttons } = layout;
   if (typeof name !== 'string' || !name.trim()) throw new Error('Layout name is required.');
   if (!Array.isArray(packageNames) || !packageNames.length)
     throw new Error('Layout packageNames must list the app packages it applies to.');
@@ -70,6 +77,22 @@ export function validateLayout(layout) {
         throw new Error(`screens.${id}.probes[${i}].rgb must be [r, g, b].`);
     });
   }
+  if (!Array.isArray(statusTexts)) throw new Error('statusTexts must be a list.');
+  const statusIds = new Set();
+  for (const [i, region] of statusTexts.entries()) {
+    const name = `statusTexts[${i}]`;
+    if (!ID.test(region.id ?? '') || statusIds.has(region.id))
+      throw new Error(`${name}.id must be unique and match ${ID}.`);
+    statusIds.add(region.id);
+    if (typeof region.label !== 'string' || !region.label.trim())
+      throw new Error(`${name} needs a label.`);
+    textBox(region, name, reference);
+    if (!Array.isArray(region.screens) || !region.screens.length)
+      throw new Error(`${name}.screens must list where it is visible.`);
+    for (const screen of region.screens)
+      if (!Object.hasOwn(screens, screen)) throw new Error(`${name} has unknown screen ${screen}.`);
+    if (region.match !== undefined) new RegExp(region.match, 'u');
+  }
   if (!Array.isArray(buttons) || !buttons.length) throw new Error('Layout needs buttons.');
   const seen = new Set();
   for (const button of buttons) {
@@ -86,6 +109,11 @@ export function validateLayout(layout) {
         throw new Error(`Button ${button.id} references unknown screen ${screen}.`);
     if (button.text !== undefined)
       textBox({ anchor: button.anchor, ...button.text }, `buttons.${button.id}.text`, reference);
+    if (
+      button.holdMs !== undefined &&
+      (!Number.isInteger(button.holdMs) || button.holdMs < 10 || button.holdMs > 2000)
+    )
+      throw new Error(`buttons.${button.id}.holdMs must be an integer from 10 to 2000.`);
   }
   for (const [id, screen] of Object.entries(screens)) {
     if (!Array.isArray(screen.texts ?? [])) throw new Error(`Screen ${id} texts must be a list.`);
@@ -103,6 +131,15 @@ export function validateLayout(layout) {
           new RegExp(region.match, 'u');
         } catch {
           throw new Error(`${name}.match must be a regular expression.`);
+        }
+      }
+      if (region.remember !== undefined && typeof region.remember !== 'boolean')
+        throw new Error(`${name}.remember must be a boolean.`);
+      for (const pattern of Object.keys(region.fix ?? {})) {
+        try {
+          new RegExp(pattern, 'gu');
+        } catch {
+          throw new Error(`${name}.fix keys must be regular expressions.`);
         }
       }
     }
@@ -211,12 +248,31 @@ function validateRoutines(layout, buttonIds) {
       }
       continue;
     }
-    if (routine.type === 'teleport') {
+    if (routine.type === 'track_quest') {
       if (routine.open === undefined) throw new Error(`${name}.open is required.`);
       button(routine.open, `${name}.open`);
       screenList(routine.doneScreens, `${name}.doneScreens`);
       if (!routine.doneScreens?.length) throw new Error(`${name}.doneScreens must list arrivals.`);
+      if (routine.mapScreens !== undefined) screenList(routine.mapScreens, `${name}.mapScreens`);
+      for (const key of ['hud', 'title', 'button']) {
+        if (!routine[key]) throw new Error(`${name}.${key} is required.`);
+        textBox(routine[key], `${name}.${key}`, reference);
+      }
+      if (routine.name !== undefined) textBox(routine.name, `${name}.name`, reference);
+      for (const key of ['openMs', 'settleMs']) int(routine, key, name, 0, 5000);
+      continue;
+    }
+    if (routine.type === 'teleport') {
+      if (routine.open === undefined) throw new Error(`${name}.open is required.`);
+      button(routine.open, `${name}.open`);
+      if (routine.zoomIn !== undefined) button(routine.zoomIn, `${name}.zoomIn`);
+      if (routine.zoomButton !== undefined) button(routine.zoomButton, `${name}.zoomButton`);
+      int(routine, 'zoomTaps', name, 0, 8);
+      screenList(routine.doneScreens, `${name}.doneScreens`);
+      if (!routine.doneScreens?.length) throw new Error(`${name}.doneScreens must list arrivals.`);
       if (routine.mapScreen !== undefined) screenList([routine.mapScreen], `${name}.mapScreen`);
+      if (routine.forceScreens !== undefined)
+        screenList(routine.forceScreens, `${name}.forceScreens`);
       for (const key of ['title', 'button']) {
         if (!routine[key]) throw new Error(`${name}.${key} is required.`);
         textBox(routine[key], `${name}.${key}`, reference);
@@ -235,17 +291,27 @@ function validateRoutines(layout, buttonIds) {
           throw new Error(`${key}.rgb must be three integers 0–255.`);
         if (target.tolerance === undefined) throw new Error(`${key}.tolerance is required.`);
       };
-      color(routine.quest, `${name}.quest`);
-      range(routine.quest.pixels, `${name}.quest.pixels`);
-      range(routine.quest.size, `${name}.quest.size`);
-      color(routine.waypoint, `${name}.waypoint`);
-      if (!routine.waypoint.shapes?.length) throw new Error(`${name}.waypoint.shapes is required.`);
-      for (const shape of routine.waypoint.shapes)
-        for (const key of ['pixels', 'w', 'h']) range(shape[key], `${name}.waypoint.shapes.${key}`);
-      const { ring } = routine.waypoint;
-      positive(ring?.radius, `${name}.waypoint.ring.radius`);
-      int(ring, 'white', `${name}.waypoint.ring`, 0, 255);
-      int(ring, 'min', `${name}.waypoint.ring`, 1, 16);
+      const waypoint = (spec, key) => {
+        color(spec, key);
+        if (!spec.shapes?.length) throw new Error(`${key}.shapes is required.`);
+        for (const shape of spec.shapes)
+          for (const field of ['pixels', 'w', 'h']) range(shape[field], `${key}.shapes.${field}`);
+        const { ring } = spec;
+        positive(ring?.radius, `${key}.ring.radius`);
+        int(ring, 'white', `${key}.ring`, 0, 255);
+        int(ring, 'min', `${key}.ring`, 1, 16);
+      };
+      if (routine.targetWaypoint === undefined) {
+        const quests = Array.isArray(routine.quest) ? routine.quest : [routine.quest];
+        if (!routine.quest || !quests.length) throw new Error(`${name}.quest is required.`);
+        quests.forEach((quest, i) => {
+          const key = `${name}.quest${Array.isArray(routine.quest) ? `[${i}]` : ''}`;
+          color(quest, key);
+          range(quest.pixels, `${key}.pixels`);
+          range(quest.size, `${key}.size`);
+        });
+      } else waypoint(routine.targetWaypoint, `${name}.targetWaypoint`);
+      waypoint(routine.waypoint, `${name}.waypoint`);
       for (const key of ['openMs', 'tapSettleMs', 'pollMs']) int(routine, key, name, 0, 5000);
       int(routine, 'waypointAttempts', name, 1, 5);
       if (routine.nearRadius !== undefined) positive(routine.nearRadius, `${name}.nearRadius`);
@@ -279,6 +345,9 @@ function validateRoutines(layout, buttonIds) {
     }
     if (routine.type === 'navigate') {
       camera();
+      if (routine.revealButton !== undefined) button(routine.revealButton, `${name}.revealButton`);
+      int(routine, 'revealTaps', name, 0, 5);
+      int(routine, 'revealMs', name, 0, 10_000);
       const { marker } = routine;
       const rgbTriplet = (value, key) => {
         if (
@@ -299,12 +368,77 @@ function validateRoutines(layout, buttonIds) {
           `${name}.marker needs rgb+tolerance or min+max to recognise the marker colour.`,
         );
       int(marker, 'tolerance', `${name}.marker`, 0, 255);
-      for (const key of ['hopMs', 'segmentMs', 'dragSettleMs', 'recoverMs'])
+      if (marker.area !== undefined) {
+        const { area } = marker;
+        if (typeof area !== 'object' || area === null)
+          throw new Error(`${name}.marker.area must be an object.`);
+        for (const key of [
+          'minRadius',
+          'maxResidual',
+          'within',
+          'maxRadius',
+          'minArc',
+          'paleMaxRadius',
+        ])
+          if (area[key] !== undefined && !(area[key] > 0 && area[key] <= 1))
+            throw new Error(`${name}.marker.area.${key} must be in (0, 1].`);
+        if ((area.min === undefined) !== (area.max === undefined))
+          throw new Error(`${name}.marker.area needs both min and max, or neither.`);
+        for (const key of ['min', 'max'])
+          if (
+            area[key] !== undefined &&
+            !(
+              Array.isArray(area[key]) &&
+              area[key].length === 3 &&
+              area[key].every((v) => Number.isInteger(v) && v >= 0 && v <= 255)
+            )
+          )
+            throw new Error(`${name}.marker.area.${key} must be [r, g, b] in 0–255.`);
+      }
+      if (routine.areaArrive !== undefined && !(routine.areaArrive > 0 && routine.areaArrive <= 1))
+        throw new Error(`${name}.areaArrive must be in (0, 1].`);
+      for (const key of ['hopMs', 'segmentMs', 'dragSettleMs', 'recoverMs', 'detourMs'])
         int(routine, key, name, 0, 5000);
+      int(routine, 'climbMs', name, 500, 60_000);
+      if (
+        routine.climbProgress !== undefined &&
+        !(routine.climbProgress > 0 && routine.climbProgress <= 1)
+      )
+        throw new Error(`${name}.climbProgress must be in (0, 1].`);
       for (const key of ['recoverAfter', 'stuckLimit']) int(routine, key, name, 1, 10);
+      int(routine, 'minFrames', name, 1, 60);
+      if (
+        routine.progressText !== undefined &&
+        !Object.values(screens).some((s) => s.texts?.some((t) => t.id === routine.progressText))
+      )
+        throw new Error(`${name}.progressText must name a screen text region.`);
+      int(routine, 'progressMetres', name, 1, 1000);
+      if (routine.shift !== undefined) {
+        const { shift } = routine;
+        if (typeof shift !== 'object' || shift === null)
+          throw new Error(`${name}.shift must be an object.`);
+        int(shift, 'minShift', `${name}.shift`, 1, 30);
+        int(shift, 'range', `${name}.shift`, 2, 60);
+      }
       for (const key of ['deflection', 'nearDeflection'])
         if (routine[key] !== undefined && !(routine[key] > 0 && routine[key] <= 1))
           throw new Error(`${name}.${key} must be in (0, 1].`);
+      const { screenMarker } = routine;
+      if (screenMarker !== undefined) {
+        const key = `${name}.screenMarker`;
+        if (!Array.isArray(screenMarker.rgb) || screenMarker.rgb.length !== 3)
+          throw new Error(`${key}.rgb must be three integers 0–255.`);
+        if (screenMarker.tolerance === undefined) throw new Error(`${key}.tolerance is required.`);
+        for (const r of ['pixels', 'size']) {
+          const v = screenMarker[r];
+          if (!Array.isArray(v) || v.length !== 2 || !(v[0] >= 0 && v[1] >= v[0]))
+            throw new Error(`${key}.${r} must be [min, max].`);
+        }
+        if (!(screenMarker.radius > 0)) throw new Error(`${key}.radius must be positive.`);
+        (screenMarker.exclude ?? []).forEach((rect, i) =>
+          textBox(rect, `${key}.exclude.${i}`, reference),
+        );
+      }
       for (const [screen, id] of Object.entries(routine.recover ?? {})) {
         screenList([screen], `${name}.recover`);
         button(id, `${name}.recover`);
@@ -523,6 +657,12 @@ export function layoutTextRegions(layout, screen, detected) {
       key: `screen:${region.id}`,
       bounds: resolveRect(region, screen, layout.reference),
     });
+  for (const region of layout.statusTexts ?? [])
+    if (region.screens.includes(detected))
+      regions.push({
+        key: `status:${region.id}`,
+        bounds: resolveRect(region, screen, layout.reference),
+      });
   return regions.filter(({ bounds }) => bounds);
 }
 
@@ -616,11 +756,28 @@ export function layoutRoutines(layout, screen, detected) {
           : buttonBounds(
               routine.type === 'dialogue'
                 ? routine.button
-                : routine.type === 'teleport'
+                : routine.type === 'teleport' || routine.type === 'track_quest'
                   ? routine.open
                   : routine.attack,
             ),
     }));
+}
+
+// Two OCR reads of one text: OCR drops or swaps a few characters of a line it read before (e.g.
+// 寻找位… for 寻找下一位…), so reads sharing 80% of their characters in order are the same.
+function sameRead(a, b) {
+  if (a === b) return true;
+  [a, b] = [[...a], [...b]];
+  const row = new Array(b.length + 1).fill(0);
+  for (const ca of a) {
+    let diagonal = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const up = row[j];
+      row[j] = ca === b[j - 1] ? diagonal + 1 : Math.max(row[j], row[j - 1]);
+      diagonal = up;
+    }
+  }
+  return row[b.length] >= 0.8 * Math.max(a.length, b.length);
 }
 
 // Add code-owned fixed controls to an observation; Jev still chooses whether and which to tap.
@@ -629,7 +786,7 @@ export function layoutObservation(
   base,
   image,
   layout,
-  { last, texts = {}, ocr, routines = false, enemyLabels = [] } = {},
+  { last, texts = {}, ocr, routines = false, enemyLabels = [], memory, blocked } = {},
 ) {
   const { screen: detected, results } = detectScreen(image, base.screen, layout);
   let description = detected ? layout.screens[detected].description || detected : undefined;
@@ -654,26 +811,63 @@ export function layoutObservation(
     last?.routine && layout.routines?.find((routine) => routine.id === last.routine.routine);
   if (detected && lastRoutine?.type === 'teleport') {
     const { status, target } = last.routine;
+    const healing = lastRoutine.id === 'heal';
+    const sentence = healing
+      ? {
+          teleported: `The last healing trip was code-verified: it arrived at ${target}; wait for the Statue of The Seven to restore health.`,
+          unverified: `The last healing trip tapped 传送 at ${target}, but code could not verify that the map position changed.`,
+          no_quest:
+            'The last healing trip found no visible unlocked Statue of The Seven at the current map zoom; press BACK and continue another activity.',
+          no_waypoint:
+            'The last healing trip found a Statue marker but no unlocked matching teleport point.',
+          no_teleport_button:
+            'The last healing trip could not open a 七天神像 teleport panel; press BACK and continue another activity.',
+        }[status]
+      : {
+          teleported: `The last teleport was code-verified: it arrived at ${target} and the minimap changed.`,
+          unverified: `The last teleport tapped 传送 at ${target} and the world came back, but the minimap did not change; it may not have moved.`,
+          no_quest:
+            'The last teleport found no tracked quest on the world map; track a quest first, or press BACK.',
+          no_waypoint:
+            'The last teleport found no unlocked teleport waypoint near the tracked quest; press BACK and walk instead.',
+          no_teleport_button:
+            'The last teleport could not open a teleport panel at the waypoint nearest the quest; press BACK and walk instead.',
+          quest_near: `The last teleport did not teleport: code found the tracked quest close to you (${last.routine.questMetres !== undefined ? `${last.routine.questMetres}m away` : 'near you on the world map'}). ${last.routine.closed ? 'Walk to it with navigate.' : 'Press BACK, then walk to it with navigate.'}`,
+        }[status];
+    if (sentence) description = `${description} ${sentence}`;
+  }
+  if (detected && lastRoutine?.type === 'track_quest') {
+    const { status, quest } = last.routine;
+    const named = quest ? ` (${quest})` : '';
     const sentence = {
-      teleported: `The last teleport was code-verified: it arrived at ${target} and the minimap changed.`,
-      unverified: `The last teleport tapped 传送 at ${target} and the world came back, but the minimap did not change; it may not have moved.`,
-      no_quest:
-        'The last teleport found no tracked quest on the world map; track a quest first, or press BACK.',
-      no_waypoint:
-        'The last teleport found no unlocked teleport waypoint near the tracked quest; press BACK and walk instead.',
-      no_teleport_button:
-        'The last teleport could not open a teleport panel at the waypoint nearest the quest; press BACK and walk instead.',
-      quest_near: `The last teleport did not teleport: code found the tracked quest close to you (${last.routine.questMetres !== undefined ? `${last.routine.questMetres}m away` : 'near you on the world map'}). ${last.routine.closed ? 'Walk to it with navigate.' : 'Press BACK, then walk to it with navigate.'}`,
+      tracked: `The last quest tracking was code-verified: it tracked the selected quest${named} and the HUD now shows its distance.`,
+      already_tracked: `The last quest tracking found a quest already tracked${named}; nothing was changed.`,
+      unverified: `The last quest tracking tapped 追踪目标${named}, but the HUD shows no quest distance yet.`,
+      no_quest_log: 'The last quest tracking could not open the quest log 任务.',
+      no_track_button: `The last quest tracking found no 追踪 button for the selected quest${named}.`,
     }[status];
     if (sentence) description = `${description} ${sentence}`;
   }
   const hasProbes = Object.values(layout.screens).some((s) => s.probes?.length);
   const previousAction = lastActionEffect(last, detected || 'unknown', layout);
   // `match` rejects OCR noise from busy backgrounds; `requires` keeps a region only with another.
-  const regions = detected ? (layout.screens[detected].texts ?? []) : [];
+  const regions = detected
+    ? [
+        ...(layout.screens[detected].texts ?? []).map((region) => ({
+          ...region,
+          textKey: `screen:${region.id}`,
+        })),
+        ...(layout.statusTexts ?? [])
+          .filter((region) => region.screens.includes(detected))
+          .map((region) => ({ ...region, textKey: `status:${region.id}` })),
+      ]
+    : [];
   const accepted = new Map();
   for (const region of regions) {
-    const text = texts[`screen:${region.id}`];
+    let text = texts[region.textKey];
+    // `fix` corrects known OCR confusions (e.g. the digit 0 read as "o") before matching.
+    for (const [pattern, replacement] of Object.entries(region.fix ?? {}))
+      text = text?.replace(new RegExp(pattern, 'gu'), replacement);
     if (text && (region.match === undefined || new RegExp(region.match, 'u').test(text)))
       accepted.set(region.id, text);
   }
@@ -683,10 +877,41 @@ export function layoutObservation(
       text &&
       (region.requires === undefined || accepted.has(region.requires)) &&
       resolveRect(region, base.screen, layout.reference);
-    return bounds
-      ? [virtualElement(`layout-text.${region.id}`, { text, label: region.label, bounds })]
-      : [];
+    if (!bounds) return [];
+    // `remember` keeps the last read across observations (e.g. while dialogue hides the HUD), so
+    // a code-read change such as quest progress is stated instead of left for Jev to guess.
+    if (region.remember && memory) {
+      const before = memory.get(region.id);
+      const plain = (value) => value.replace(/[\s\p{P}]/gu, '');
+      if (before !== undefined && !sameRead(plain(before.text), plain(text)))
+        memory.set(region.id, { text, from: before.text });
+      else if (before === undefined) memory.set(region.id, { text });
+      const { from } = memory.get(region.id);
+      if (from !== undefined)
+        description = `${description} Code read that ${region.label} last changed from "${from}" to "${memory.get(region.id).text}".`;
+    }
+    return [virtualElement(`layout-text.${region.id}`, { text, label: region.label, bounds })];
   });
+  // Code-measured walking progress: a navigate that timed out or got stuck without the quest
+  // distance shrinking means the path is blocked (water, cliffs, roofs), which Jev cannot see.
+  const navigate = (layout.routines ?? []).find((r) => r.type === 'navigate' && r.progressText);
+  if (detected && navigate) {
+    const read = accepted.get(navigate.progressText);
+    const metres =
+      read === undefined ? undefined : Number(hudDistance(read).match(/(\d+)\s*m/i)?.[1]);
+    if (lastRoutine?.type === 'navigate' && last.routine.fromMetres !== undefined) {
+      const { status, fromMetres } = last.routine;
+      if (status === 'arrived') blocked = undefined;
+      else if (Number.isFinite(metres))
+        blocked =
+          (status === 'timeout' || status === 'stuck') &&
+          metres > fromMetres - (navigate.progressMetres ?? 5)
+            ? { from: fromMetres, to: metres }
+            : undefined;
+    }
+    if (blocked)
+      description = `${description} Code measured that the last walk to the quest made no progress (${blocked.from}m → ${blocked.to}m): the way is blocked, so teleport instead of navigating again.`;
+  }
   const elements = [
     ...base.elements,
     virtualElement('layout-screen', {
@@ -748,6 +973,7 @@ export function layoutObservation(
         )
         .digest('hex'),
       ...(previousAction ? { previousAction } : {}),
+      ...(blocked ? { blocked } : {}),
       ...(ocr ? { ocr } : {}),
     },
     fingerprint: createHash('sha256').update(JSON.stringify(content)).digest('hex'),
@@ -784,9 +1010,23 @@ export function withLayout(device, layout, { recognizer } = {}) {
   device.layout = layout;
   const baseAct = device.act?.bind(device);
   let last;
+  let blocked;
+  const memory = new Map();
   // Devices may offer faster decoded frames (ADB_CAPTURE=raw); otherwise decode the PNG.
-  const capture = async () =>
-    typeof device.frame === 'function' ? device.frame() : decodePng(await device.screenshot());
+  const capture = async () => {
+    const capturedAt = Date.now();
+    const image =
+      typeof device.frame === 'function'
+        ? await device.frame()
+        : decodePng(await device.screenshot());
+    return Object.assign(image, { capturedAt });
+  };
+  // Keep the pixels with the observation for frame recording; non-enumerable stays out of traces.
+  const withFrame = (observation, image) =>
+    Object.defineProperty(observation, 'frame', {
+      value: { image, capturedAt: image.capturedAt },
+      enumerable: false,
+    });
   const readText =
     recognizer && (async (image, box) => (await recognizer.recognize(image, box))?.text ?? '');
   const observeLayout = async (base, image) => {
@@ -815,13 +1055,17 @@ export function withLayout(device, layout, { recognizer } = {}) {
         enemyLabels = [];
       }
     }
-    return layoutObservation(base, image, layout, {
+    const observation = layoutObservation(base, image, layout, {
       last,
       texts,
       ocr,
       enemyLabels,
+      memory,
+      blocked,
       routines: typeof device.touch === 'function',
     });
+    blocked = observation.layout.blocked;
+    return observation;
   };
   const observeOnce = async () => {
     // ADB: game surfaces often break uiautomator, so read the foreground package and pixels only.
@@ -829,11 +1073,15 @@ export function withLayout(device, layout, { recognizer } = {}) {
       const packageName = await device.foregroundPackage();
       if (!packages.has(packageName)) return baseObserve();
       const image = await capture();
-      return observeLayout(screenOnlyObservation(device.deviceId, packageName, image), image);
+      return withFrame(
+        await observeLayout(screenOnlyObservation(device.deviceId, packageName, image), image),
+        image,
+      );
     }
     const base = await baseObserve();
     if (!packages.has(base.phone.packageName)) return base;
-    return observeLayout(base, await capture());
+    const image = await capture();
+    return withFrame(await observeLayout(base, image), image);
   };
   // Game transitions animate for a moment; re-capture instead of showing Jev a half-drawn frame.
   device.observe = async () => {
@@ -850,8 +1098,31 @@ export function withLayout(device, layout, { recognizer } = {}) {
       const screen = options?.expected?.layout?.screen;
       if (action?.type === 'tap-element' && action.elementId?.startsWith('layout-routine.'))
         return runLayoutRoutine(action, options, screen);
+      const hold =
+        action?.type === 'tap-element' &&
+        layout.buttons.find((b) => `layout.${b.id}` === action.elementId)?.holdMs;
       try {
-        const result = await baseAct(action, options);
+        let result;
+        // Some game buttons ignore a plain tap (e.g. 复苏 on the defeat screen) and need a press.
+        if (hold) {
+          if (!options?.expected)
+            throw new Error('Element taps require their original observation.');
+          const current = await device.observe();
+          assertFresh(current, options.expected, action, options.maxAgeMs);
+          const { left, top, right, bottom } = current.elements.find(
+            (e) => e.id === action.elementId,
+          ).bounds;
+          const x = Math.floor((left + right) / 2),
+            y = Math.floor((top + bottom) / 2);
+          result = await baseAct({
+            type: 'swipe',
+            startX: x,
+            startY: y,
+            endX: x,
+            endY: y,
+            duration: hold,
+          });
+        } else result = await baseAct(action, options);
         last = screen ? { action, screen } : undefined;
         return result;
       } catch (error) {
@@ -868,6 +1139,14 @@ export function withLayout(device, layout, { recognizer } = {}) {
       throw new Error('Routine is not available.');
     const dims = current.screen;
     last = { action, screen, routine: { routine: routine.id, status: 'started' } };
+    const progress =
+      routine.type === 'navigate' &&
+      routine.progressText &&
+      options.expected.elements?.find((e) => e.id === `layout-text.${routine.progressText}`)?.text;
+    const fromMetres = progress ? Number(hudDistance(progress).match(/(\d+)\s*m/i)?.[1]) : NaN;
+    // A walk measured as blocked lets teleport skip its "quest is close, walk instead" checks.
+    const force = routine.type === 'teleport' && Boolean(blocked);
+    if (routine.type === 'teleport') blocked = undefined;
     const joystick = layout.joystick && resolvePoint(layout.joystick, dims, layout.reference);
     const result = await ROUTINES[routine.type]({
       routine,
@@ -900,9 +1179,14 @@ export function withLayout(device, layout, { recognizer } = {}) {
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => performance.now(),
       random: device.random ?? Math.random,
+      ...(force ? { force } : {}),
     });
-    last = { action, screen, routine: result };
-    return { routine: result };
+    last = {
+      action,
+      screen,
+      routine: Number.isFinite(fromMetres) ? { ...result, fromMetres } : result,
+    };
+    return { routine: last.routine };
   };
   if (baseListApps && layout.appLabel)
     device.listApps = async () => {

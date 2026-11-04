@@ -16,6 +16,7 @@ import {
   withLayout,
 } from './layout.mjs';
 import { decodePng, encodePng, rgbAt } from './png.mjs';
+import { ROUTINES } from './routines.mjs';
 import { lazyRecognizer } from './ocr.mjs';
 import { runAgent } from './agent.mjs';
 
@@ -321,6 +322,25 @@ test('game screens expose only the fixed controls for the detected screen', asyn
   await device.act({ type: 'tap-element', elementId: 'layout.attack' }, { expected: observation });
   assert.equal(calls.at(-1)[3], 'input tap 180 80');
 
+  // A button with holdMs is pressed in place instead of tapped.
+  const held = fakeGame({
+    png: () => png,
+    profile: validateLayout({
+      ...layout,
+      buttons: layout.buttons.map((b) => (b.id === 'attack' ? { ...b, holdMs: 300 } : b)),
+    }),
+  });
+  await held.device.act(
+    { type: 'tap-element', elementId: 'layout.attack' },
+    { expected: await held.device.observe() },
+  );
+  assert.equal(held.calls.at(-1)[3], 'input swipe 180 80 180 80 300');
+  assert.equal((await held.device.observe()).layout.previousAction.control, '"Attack"');
+  assert.throws(
+    () => validateLayout({ ...layout, buttons: [{ ...layout.buttons[0], holdMs: 0 }] }),
+    /holdMs/,
+  );
+
   // A different detected screen invalidates the old decision before any input.
   png = image(
     200,
@@ -489,13 +509,43 @@ test('traces record the effect of the previous executed action, but Jev does not
 test('declared text regions of the detected screen are read into elements Jev sees', async () => {
   const profile = validateLayout({
     ...layout,
+    statusTexts: [
+      {
+        id: 'health',
+        label: 'Health',
+        x: 100,
+        y: 90,
+        w: 50,
+        h: 10,
+        match: '^\\d+/\\d+$',
+        screens: ['world'],
+      },
+    ],
     screens: {
       ...layout.screens,
       world: {
         ...layout.screens.world,
         texts: [
-          { id: 'toast', label: 'Notice', x: 50, y: 20, w: 60, h: 10, match: '^Obtained' },
-          { id: 'detail', label: 'Detail', x: 50, y: 40, w: 60, h: 10, requires: 'toast' },
+          {
+            id: 'toast',
+            label: 'Notice',
+            x: 50,
+            y: 20,
+            w: 60,
+            h: 10,
+            fix: { '^0b': 'Ob' },
+            match: '^Obtained',
+          },
+          {
+            id: 'detail',
+            label: 'Detail',
+            x: 50,
+            y: 40,
+            w: 60,
+            h: 10,
+            requires: 'toast',
+            remember: true,
+          },
         ],
       },
     },
@@ -513,10 +563,12 @@ test('declared text regions of the detected screen are read into elements Jev se
   const boxes = [];
   let label = 'Pick up lotus';
   let notice = 'Obtained x1';
+  let detail = 'Lotus';
+  let health = '200/1000';
   const recognizer = {
     recognize: async (_image, box) => {
       boxes.push(box);
-      const text = box.left > 100 ? label : box.top < 30 ? notice : 'Lotus';
+      const text = box.left > 100 ? label : box.top > 80 ? health : box.top < 30 ? notice : detail;
       return { text, confidence: 0.9 };
     },
   };
@@ -527,23 +579,50 @@ test('declared text regions of the detected screen are read into elements Jev se
     { left: 135, top: 75, right: 165, bottom: 85 },
     { left: 20, top: 15, right: 80, bottom: 25 },
     { left: 20, top: 35, right: 80, bottom: 45 },
+    { left: 75, top: 85, right: 125, bottom: 95 },
   ]);
   assert.equal(observation.elements.find((e) => e.id === 'layout.attack').text, 'Pick up lotus');
   const toast = observation.elements.find((e) => e.id === 'layout-text.toast');
   assert.deepEqual([toast.text, toast.label, toast.clickable], ['Obtained x1', 'Notice', false]);
   assert.equal(observation.elements.find((e) => e.id === 'layout-text.detail').text, 'Lotus');
-  assert.equal(observation.layout.ocr.regions, 3);
+  assert.equal(observation.elements.find((e) => e.id === 'layout-text.health').text, '200/1000');
+  assert.equal(observation.layout.ocr.regions, 4);
   const request = JSON.stringify(await captureRequest(observation));
   assert.ok(request.includes('Pick up lotus') && request.includes('Obtained x1'));
 
   // Background noise fails `match`, and the region that requires it is dropped as well.
   notice = '号';
+  health = 'unknown';
   const noisy = await device.observe();
   assert.deepEqual(
     noisy.elements.filter((e) => e.id.startsWith('layout-text.')),
     [],
   );
+  // `fix` repairs a known OCR confusion before `match` runs.
+  notice = '0btained x1';
+  health = '200/1000';
+  assert.equal(
+    (await device.observe()).elements.find((e) => e.id === 'layout-text.toast').text,
+    'Obtained x1',
+  );
   notice = 'Obtained x1';
+
+  // A `remember` region states its last code-read change, even after it was hidden in between;
+  // punctuation-only OCR differences are not a change.
+  assert.ok(!(await device.observe()).layout.description.includes('last changed'));
+  detail = 'Lotus，';
+  assert.ok(!(await device.observe()).layout.description.includes('last changed'));
+  // A few characters dropped by OCR are not a change either.
+  detail = 'Lotu';
+  assert.ok(!(await device.observe()).layout.description.includes('last changed'));
+  notice = '号';
+  await device.observe();
+  notice = 'Obtained x1';
+  detail = 'Lily';
+  const changed = 'Code read that Detail last changed from "Lotus" to "Lily".';
+  assert.ok((await device.observe()).layout.description.includes(changed));
+  assert.ok((await device.observe()).layout.description.includes(changed));
+  detail = 'Lotus';
 
   // OCR punctuation and spacing noise alone does not make the decision stale.
   label = 'Pick up，lotus」';
@@ -599,6 +678,20 @@ test('declared text regions of the detected screen are read into elements Jev se
       }),
     /match must be a regular expression/,
   );
+  assert.throws(
+    () =>
+      validateLayout({
+        ...profile,
+        screens: {
+          ...profile.screens,
+          world: {
+            ...profile.screens.world,
+            texts: [{ ...profile.screens.world.texts[0], fix: { '[': 'x' } }],
+          },
+        },
+      }),
+    /fix keys must be regular expressions/,
+  );
 });
 
 function layoutRun(signatures, actions, receipt = {}) {
@@ -637,6 +730,102 @@ function layoutRun(signatures, actions, receipt = {}) {
     onObservation: (event) => observed.push(event),
   }).then((result) => ({ result, observed }));
 }
+
+test('a navigate that does not shrink the quest distance is reported and lets teleport force', async () => {
+  const profile = validateLayout({
+    ...layout,
+    screens: {
+      ...layout.screens,
+      world: {
+        ...layout.screens.world,
+        texts: [{ id: 'dist', label: 'Quest distance', x: 50, y: 40, w: 60, h: 10, match: 'm$' }],
+      },
+    },
+    joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+    minimap: { x: 60, y: 50, w: 20, h: 20 },
+    camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+    routines: [
+      {
+        id: 'navigate',
+        type: 'navigate',
+        label: 'Navigate',
+        screens: ['world'],
+        marker: { rgb: [250, 230, 0], tolerance: 40 },
+        progressText: 'dist',
+        progressMetres: 5,
+      },
+      {
+        id: 'teleport',
+        type: 'teleport',
+        label: 'Teleport',
+        screens: ['world'],
+        open: 'menu',
+        doneScreens: ['world'],
+        quest: { rgb: [90, 140, 230], tolerance: 30, pixels: [5, 50], size: [2, 9] },
+        waypoint: {
+          rgb: [50, 150, 210],
+          tolerance: 30,
+          shapes: [{ pixels: [5, 50], w: [2, 9], h: [2, 9] }],
+          ring: { radius: 4, white: 215, min: 4 },
+        },
+        title: { x: 100, y: 10, w: 40, h: 10 },
+        button: { x: 100, y: 90, w: 40, h: 10 },
+      },
+    ],
+  });
+  const world = image(
+    200,
+    100,
+    [0, 0, 0],
+    [{ left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] }],
+  );
+  let distance = '89m';
+  const recognizer = { recognize: async () => ({ text: distance, confidence: 0.9 }) };
+  const { device } = fakeGame({ png: () => world, profile, recognizer });
+  device.touch = async () => {};
+  const original = { navigate: ROUTINES.navigate, teleport: ROUTINES.teleport };
+  const seen = [];
+  let status = 'timeout';
+  ROUTINES.navigate = async () => ({ routine: 'navigate', status });
+  ROUTINES.teleport = async (ctx) => {
+    seen.push(ctx.force);
+    return { routine: 'teleport', status: 'teleported' };
+  };
+  const walk = async () =>
+    device.act(
+      { type: 'tap-element', elementId: 'layout-routine.navigate' },
+      { expected: await device.observe() },
+    );
+  const blocked = 'made no progress (89m → 87m)';
+  try {
+    assert.equal((await walk()).routine.fromMetres, 89);
+    distance = '87m';
+    const after = await device.observe();
+    assert.ok(after.layout.description.includes(blocked));
+    assert.deepEqual(after.layout.blocked, { from: 89, to: 87 });
+    // The finding persists until teleport runs, which is then told to skip its near checks.
+    assert.ok((await device.observe()).layout.description.includes(blocked));
+    await device.act(
+      { type: 'tap-element', elementId: 'layout-routine.teleport' },
+      { expected: await device.observe() },
+    );
+    assert.ok(!(await device.observe()).layout.description.includes('no progress'));
+    await device.act(
+      { type: 'tap-element', elementId: 'layout-routine.teleport' },
+      { expected: await device.observe() },
+    );
+    assert.deepEqual(seen, [true, undefined]);
+    // Real progress, or arriving, is not reported as blocked.
+    await walk();
+    distance = '70m';
+    assert.equal((await device.observe()).layout.blocked, undefined);
+    status = 'arrived';
+    await walk();
+    assert.equal((await device.observe()).layout.blocked, undefined);
+  } finally {
+    Object.assign(ROUTINES, original);
+  }
+});
 
 test('the same game control used twice without a visible change stops the run', async () => {
   // Pixels differ every frame, so only the layout signature can show that nothing happened.

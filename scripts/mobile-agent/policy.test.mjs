@@ -393,6 +393,39 @@ test('execution is logged before a failing post-action observation', async () =>
   assert.equal(logged, true);
 });
 
+test('transient model failures re-observe and re-ask a bounded number of times', async () => {
+  for (const failures of [2, 3]) {
+    let reads = 0,
+      decisions = 0;
+    const device = {
+      assertReady: async () => {},
+      observe: async () => (reads++, observe()),
+      act: async () => assert.fail('no input expected'),
+    };
+    const policy = {
+      decide: async () => {
+        if (++decisions <= failures)
+          throw Object.assign(new Error('Model API transport failed'), { transient: true });
+        return { status: 'done' };
+      },
+    };
+    const run = runAgent({ device, policy, goal: 'Home', execute: true, modelRetryMs: 0 });
+    if (failures === 2) {
+      const result = await run;
+      assert.equal(result.status, 'done');
+      assert.equal(result.timings.modelRetries, 2);
+      assert.equal(reads, 3);
+    } else await assert.rejects(run, /transport failed/);
+  }
+  const policy = {
+    decide: async () => {
+      throw new Error('bad request');
+    },
+  };
+  const device = { assertReady: async () => {}, observe: async () => observe() };
+  await assert.rejects(runAgent({ device, policy, goal: 'Home', modelRetryMs: 0 }), /bad request/);
+});
+
 test('stale decisions re-observe and re-predict; uncertain mutations never retry', async () => {
   for (const stale of [true, false]) {
     let acts = 0,

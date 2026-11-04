@@ -2,12 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { root } from './env.mjs';
 
 test('CLI help works from outside the repository without credentials', () => {
   const help = execFileSync(process.execPath, [join(root, 'scripts/run.mjs'), '--help'], {
-    cwd: '/tmp',
+    cwd: tmpdir(),
     env: { PATH: process.env.PATH },
     encoding: 'utf8',
   });

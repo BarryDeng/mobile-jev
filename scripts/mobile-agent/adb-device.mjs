@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { MobilerunDevice, summarizeState } from './device.mjs';
 import { decodePng } from './png.mjs';
+import { parseHealth } from './device-health.mjs';
 
 // Android keycodes for the Mobilerun global-action numbers used by MobilerunDevice.act.
 const GLOBAL_KEYCODES = { 1: 4, 2: 3, 3: 187 };
@@ -315,7 +316,13 @@ export class AdbDevice extends MobilerunDevice {
   // phone), but some emulators (LDPlayer) return stale raw frames, so PNG stays the default.
   async frame() {
     if (this.capture === 'png') return decodePng(await this.screenshot());
-    return decodeRawScreencap(await this.shell('screencap'));
+    // A raw frame is ~10 MB; over wireless ADB it occasionally arrives short. Retry once.
+    try {
+      return decodeRawScreencap(await this.shell('screencap'));
+    } catch (error) {
+      if (!/unexpected size|truncated/.test(error.message)) throw error;
+      return decodeRawScreencap(await this.shell('screencap'));
+    }
   }
 
   // Raw single-pointer events: a held pointer (down, moves, up) steers a game's virtual joystick.
@@ -325,6 +332,21 @@ export class AdbDevice extends MobilerunDevice {
     if (![x, y].every((v) => Number.isSafeInteger(v) && v >= 0))
       throw new Error('Touch coordinates must be nonnegative integers.');
     await this.shell(`input motionevent ${name} ${x} ${y}`);
+  }
+
+  // Thermal status and battery for withHealthGuard (see device-health.mjs).
+  async health() {
+    const text = (
+      await this.shell("dumpsys thermalservice | grep 'Thermal Status'; dumpsys battery")
+    ).toString('utf8');
+    return parseHealth(text);
+  }
+
+  // Sleep or wake the screen; waking also dismisses a keyguard without a credential.
+  async setScreen(on) {
+    await this.shell(
+      on ? 'input keyevent 224; sleep 1; wm dismiss-keyguard' : 'input keyevent 223',
+    );
   }
 
   async launchApp(packageName) {

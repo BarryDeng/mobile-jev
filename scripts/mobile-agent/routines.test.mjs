@@ -13,8 +13,10 @@ import {
   regionMotion,
   teammateUp,
   teleport,
+  trackQuest,
   mapQuestMarkers,
   mapWaypoints,
+  hudDistance,
 } from './routines.mjs';
 
 const SCREEN = { width: 40, height: 20 };
@@ -446,16 +448,27 @@ test('combat with an enemy HP bar stops when no enemy is left', async () => {
 });
 
 test('combat skips downed teammates and closes the revive dialog', async () => {
-  // Grey frames: every teammate portrait is grey (downed), so nobody is switched in.
+  // Grey frames: every portrait reads grey at once, which is a panel faded by a skill animation
+  // far more often than a fully downed party, so the rotation switches anyway.
   const alivePortrait = { dx: 0, dy: 0, w: 6, h: 6, minSaturation: 70, minPixels: 4 };
   const grey = await combat(script([['world', 0]], { ...COMBAT, alivePortrait }).ctx);
-  assert.equal(grey.switches, 0);
-  assert.equal(grey.downed, grey.rounds * 3);
+  assert.equal(grey.switches, grey.rounds);
+  assert.equal(grey.downed, 0);
+  assert.equal(grey.faded, grey.rounds);
   const image = flat(0);
   for (let y = 2; y < 8; y++)
     for (let x = 27; x < 33; x++) image.pixels.set([220, 40, 40], (y * 40 + x) * 3);
   assert.ok(teammateUp(image, SCREEN, { x: 30, y: 5 }, alivePortrait));
   assert.ok(!teammateUp(image, SCREEN, { x: 5, y: 5 }, alivePortrait));
+  // Only row 3 is in colour: rows 1 and 2 are skipped as downed and row 3 is switched in.
+  const partial = script([['world', 0]], { ...COMBAT, alivePortrait, maxMs: 1 });
+  partial.ctx.buttonCenter = (id) =>
+    ({ t1: { x: 5, y: 5 }, t2: { x: 15, y: 5 }, t3: { x: 30, y: 5 } })[id] ?? { x: 1, y: 1 };
+  partial.ctx.frame = async () => ({ screen: 'world', image });
+  const one = await combat(partial.ctx);
+  assert.deepEqual(one.downRows, ['1:t1', '1:t2']);
+  assert.equal(one.switches, 1);
+  assert.equal(one.faded, undefined);
   // A revive dialog (switching to a downed teammate) is cancelled and the fight goes on.
   const { ctx, touches } = script(
     [
@@ -477,7 +490,8 @@ const MAP_SCREEN = { width: 120, height: 100 };
 const YELLOW = { rgb: [251, 232, 2], tolerance: 30 };
 // A minimap with a brighter 85° view cone at `cone` degrees, an optional yellow marker and
 // corners whose shade changes with `tick` so consecutive frames differ like a moving map.
-function mapImage({ cone, marker, tick = 0 }) {
+// `ground` [x, y] draws textured terrain seen from that position, so the map scrolls with it.
+function mapImage({ cone, marker, ring, diamond, ground, tick = 0 }) {
   const { width, height } = MAP_SCREEN;
   const pixels = Buffer.alloc(width * height * 3);
   for (let y = 0; y < height; y++)
@@ -489,12 +503,28 @@ function mapImage({ cone, marker, tick = 0 }) {
       const off = Math.abs(((((deg - cone + 180) % 360) + 360) % 360) - 180);
       let rgb = [60, 60, 60];
       if (r > 40) rgb = [(tick * 40) % 200, 60, 60];
-      else if (off <= 42 && r > 6) rgb = [110, 110, 110];
+      if (ground) {
+        const gx = x + ground[0],
+          gy = y + ground[1];
+        rgb = [((gx * 37 + gy * 91) ^ (gx * gy)) & 127, (gx * 13 + gy * 7) & 127, 60];
+      } else if (off <= 42 && r > 6) rgb = [110, 110, 110];
       if (marker) {
         const mx = 50 + marker.r * 40 * Math.cos((marker.deg * Math.PI) / 180),
           my = 50 - marker.r * 40 * Math.sin((marker.deg * Math.PI) / 180);
         if (Math.hypot(x - mx, y - my) <= 3) rgb = [251, 232, 2];
       }
+      // A quest-area outline (radius `ring.radius` half-widths) with a gap from `ring.gap` deg.
+      if (ring) {
+        const rx = 50 + ring.r * 40 * Math.cos((ring.deg * Math.PI) / 180),
+          ry = 50 - ring.r * 40 * Math.sin((ring.deg * Math.PI) / 180);
+        const d = Math.hypot(x - rx, y - ry);
+        const at = (Math.atan2(-(y - ry), x - rx) * 180) / Math.PI;
+        const inGap = Math.abs(((((at - ring.gap + 180) % 360) + 360) % 360) - 180) < 50;
+        if (Math.abs(d - ring.radius * 40) <= 1.5 && !inGap) rgb = ring.rgb ?? [251, 232, 2];
+      }
+      // A gold quest diamond floating in the 3D view, outside the minimap.
+      if (diamond && Math.abs(x - diamond[0]) <= 3 && Math.abs(y - diamond[1]) <= 3)
+        rgb = [233, 180, 13];
       pixels.set(rgb, (y * width + x) * 3);
     }
   return { width, height, channels: 3, pixels };
@@ -563,6 +593,19 @@ test('navigate turns the camera toward the marker, runs, and stops on arrival', 
 
 test('navigate reports a missing marker, a hidden cone and stop screens', async () => {
   assert.equal((await navigate(navHarness([{ cone: 0 }]).ctx)).status, 'no_marker');
+  // With `revealButton` a hidden marker gets one tap on the quest title, then a fresh look.
+  const hidden = navHarness([{ cone: 0 }, { cone: 0, marker: { deg: 0, r: 0.02 } }], {
+    revealButton: 'quest_objective',
+  });
+  const revealed = await navigate(hidden.ctx);
+  assert.deepEqual([revealed.status, revealed.reveals], ['arrived', 1]);
+  assert.deepEqual(hidden.touches.slice(0, 2), [
+    ['down', 100, 90],
+    ['up', 100, 90],
+  ]);
+  const gone = navHarness([{ cone: 0 }], { revealButton: 'quest_objective' });
+  const twice = await navigate(gone.ctx);
+  assert.deepEqual([twice.status, twice.reveals], ['no_marker', 1]);
   const flatCone = navHarness([{ cone: 0, marker: { deg: 0, r: 1.2 } }], {
     cone: { minContrast: 1000 },
   });
@@ -574,6 +617,125 @@ test('navigate reports a missing marker, a hidden cone and stop screens', async 
   const talk = await navigate(ctx);
   assert.deepEqual([talk.status, talk.screen], ['found', 'talk']);
   assert.equal(held(touches), 0);
+});
+
+test('navigate steers by the quest diamond in view once the minimap marker is close', async () => {
+  const screenMarker = {
+    rgb: [233, 180, 13],
+    tolerance: 10,
+    pixels: [40, 60],
+    size: [6, 8],
+    radius: 0.35,
+    viewDegreesPerPixel: 1,
+    turnDeg: 8,
+  };
+  const frames = [
+    { cone: 0, marker: { deg: 0, r: 0.05 }, diamond: [105, 20] },
+    { cone: 0, marker: { deg: 0, r: 0.05 }, diamond: [60, 20], screen: 'talk' },
+  ];
+  // Without it the close marker counts as arrival, though the NPC is still metres away.
+  assert.equal((await navigate(navHarness(frames).ctx)).status, 'arrived');
+  const { ctx, touches } = navHarness(frames, { screenMarker, arriveRadius: 0.03 });
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.close, result.drags], ['found', 1, 1]);
+  // Diamond 45 px right of centre: the camera turns right (drag ends right of its start).
+  const drag = touches.findIndex(([event, x, y]) => event === 'down' && x === 80 && y === 40);
+  assert.ok(touches.slice(drag).find(([event]) => event === 'up')[1] > 80);
+  assert.equal(held(touches), 0);
+});
+
+test('markerBearing fits a quest-area ring so a hidden arc does not move its centre', () => {
+  const AREA = { ...YELLOW, area: {} };
+  const image = mapImage({ cone: 0, ring: { deg: 45, r: 0.3, radius: 0.5, gap: 200 } });
+  const centroid = markerBearing(image, MAP_SCREEN, MAP, YELLOW, 1.35);
+  const fitted = markerBearing(image, MAP_SCREEN, MAP, AREA, 1.35);
+  assert.ok(Math.abs(fitted.deg - 45) < 5, `ring centre at ${fitted.deg}`);
+  assert.ok(Math.abs(fitted.r - 0.3) < 0.05, `ring centre r ${fitted.r}`);
+  assert.ok(Math.abs(fitted.area.radius - 0.5) < 0.05);
+  // The plain centroid is pulled away from the gap.
+  assert.ok(Math.abs(centroid.r - 0.3) > 0.1, `centroid r ${centroid.r}`);
+  // A compact icon is not an area.
+  const icon = mapImage({ cone: 0, marker: { deg: 135, r: 0.8 } });
+  assert.equal(markerBearing(icon, MAP_SCREEN, MAP, AREA, 1.35).area, undefined);
+  // A circle wider than the minimap is stray arcs, not a quest area (it faked an arrival).
+  const wide = mapImage({ cone: 0, ring: { deg: 0, r: 0.1, radius: 1.2, gap: 200 } });
+  assert.equal(markerBearing(wide, MAP_SCREEN, MAP, AREA, 1.35).area, undefined);
+  const capped = { ...YELLOW, area: { maxRadius: 1 } };
+  assert.equal(markerBearing(image, MAP_SCREEN, MAP, capped, 1.35).area.radius < 1, true);
+  // A quest icon at the minimap edge (row runs [y, x0, x1] read off a phone frame) fitted a
+  // circle 0.86 half-widths wide that its pixels cover only a short arc of.
+  const W = 400,
+    H = 300,
+    edge = Buffer.alloc(W * H * 3, 60);
+  for (const [y, x0, x1] of EDGE_ICON)
+    for (let x = x0; x <= x1; x++) edge.set([251, 232, 2], (y * W + x) * 3);
+  const edgeImage = { width: W, height: H, channels: 3, pixels: edge };
+  const phone = [
+    { width: W, height: H },
+    { left: 210, right: 390, top: 60, bottom: 240 },
+  ];
+  const edgeArea = (area) => markerBearing(edgeImage, ...phone, { ...YELLOW, area }, 1.35);
+  assert.equal(edgeArea({}).area, undefined);
+  assert.ok(edgeArea({}).r > 1);
+  assert.ok(edgeArea({ minArc: 0.01 }).area.radius > 0.8);
+});
+
+// prettier-ignore
+const EDGE_ICON = [[49,234,236],[50,233,237],[51,232,238],[52,232,238],[53,232,238],[54,231,233],[54,237,238],[55,230,232],[55,237,239],[56,230,231],[56,239,240],[57,228,230],[57,234,235],[57,240,241],[58,227,229],[58,233,236],[58,240,242],[59,226,228],[59,232,237],[59,242,243],[60,223,227],[60,231,238],[60,243,247],[61,222,226],[61,231,239],[61,244,248],[62,221,225],[62,229,240],[62,245,249],[63,221,224],[63,228,241],[63,246,249],[64,220,224],[64,228,241],[64,246,250],[65,221,225],[65,229,241],[65,245,249],[66,222,226],[66,230,240],[66,244,248],[67,223,227],[67,231,239],[67,243,247],[68,226,228],[68,232,238],[68,242,244],[68,246,246],[69,227,229],[69,233,237],[69,241,243],[70,228,230],[70,234,236],[70,240,242],[71,229,231],[71,235,235],[71,239,241],[72,230,232],[72,238,240],[73,231,233],[73,237,239],[74,231,234],[74,236,238],[75,232,238],[76,232,238],[77,233,237],[78,234,236],[79,235,235],[152,381,381]];
+
+test('markerBearing finds a pale translucent area ring next to a bright icon', () => {
+  const PALE = { ...YELLOW, area: { min: [170, 150, 60], max: [235, 215, 130] } };
+  const pale = { deg: 120, r: 0.2, radius: 0.3, gap: 270, rgb: [205, 188, 108] };
+  const image = mapImage({ cone: 0, ring: pale, marker: { deg: -45, r: 1.25 } });
+  // The icon colour alone sees only the stray icon outside the ring.
+  assert.equal(
+    markerBearing(image, MAP_SCREEN, MAP, { ...YELLOW, area: {} }, 1.35).area,
+    undefined,
+  );
+  const fitted = markerBearing(image, MAP_SCREEN, MAP, PALE, 1.35);
+  assert.ok(Math.abs(fitted.deg - 120) < 8, `ring centre at ${fitted.deg}`);
+  assert.ok(Math.abs(fitted.r - 0.2) < 0.06, `ring centre r ${fitted.r}`);
+  // A filled pale patch is not a ring.
+  const patch = mapImage({ cone: 0, marker: { deg: -45, r: 1.25 } });
+  for (let y = 40; y < 50; y++)
+    for (let x = 40; x < 50; x++) patch.pixels.set([205, 188, 108], (y * patch.width + x) * 3);
+  assert.equal(markerBearing(patch, MAP_SCREEN, MAP, PALE, 1.35).area, undefined);
+});
+
+test('navigate runs into a quest area and arrives near its centre', async () => {
+  const { ctx, touches } = navHarness(
+    [
+      { cone: 45, ring: { deg: 45, r: 0.3, radius: 0.5, gap: 200 } },
+      { cone: 45, ring: { deg: 45, r: 0.08, radius: 0.5, gap: 200 } },
+    ],
+    { marker: { ...YELLOW, area: {} }, arriveRadius: 0.03, areaArrive: 0.25 },
+  );
+  const result = await navigate(ctx);
+  assert.equal(result.status, 'arrived');
+  assert.ok(result.marker.area);
+  // Full deflection inside an area, not the short near-marker hops.
+  assert.ok(touches.some(([event, x, y]) => event === 'move' && x === 20 && y === 70));
+  assert.ok(!touches.some(([event, x, y]) => event === 'move' && x === 20 && y === 75));
+});
+
+test('navigate keeps re-aiming for minFrames when frames are slow, within three times maxMs', async () => {
+  for (const [minFrames, frames] of [
+    [undefined, 3],
+    [8, 8],
+    [40, 11],
+  ]) {
+    const { ctx } = navHarness([{ cone: 0, marker: { deg: 0, r: 1.2 } }], {
+      ...(minFrames && { minFrames }),
+      maxMs: 20_000,
+      stuckLimit: 10,
+    });
+    const frame = ctx.frame;
+    ctx.frame = async () => (await ctx.sleep(4800), frame());
+    const result = await navigate(ctx);
+    assert.equal(result.status, 'timeout');
+    assert.equal(result.frames, frames);
+    assert.ok(result.ms <= 60_000);
+  }
 });
 
 test('navigate gives up when the map stops moving', async () => {
@@ -620,6 +782,47 @@ test('navigate drops and turns only once climbing truly stalls', async () => {
   const result = await navigate(ctx);
   assert.equal(result.status, 'arrived');
   assert.equal(result.recoveries, 1);
+});
+
+test('navigate steers by how the minimap scrolls when the cone is faint', async () => {
+  // Faint cone: without `shift` it gives up; with it it runs forward and reads the heading from
+  // the scrolled map (east here), then turns the camera 90° left towards the marker in the north.
+  const frames = [
+    { marker: { deg: 90, r: 1.2 }, ground: [0, 0] },
+    { marker: { deg: 90, r: 1.2 }, ground: [6, 0] },
+    { marker: { deg: 90, r: 0.3 }, ground: [6, -4] },
+  ];
+  assert.equal((await navigate(navHarness(frames).ctx)).status, 'no_camera');
+  const { ctx, touches } = navHarness(frames, { shift: {}, arriveRadius: 0.35 });
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.shift, result.drags], ['arrived', 1, 1]);
+  const drag = touches.findIndex(([event, x, y]) => event === 'down' && x === 80 && y === 40);
+  const up = touches.slice(drag).find(([event]) => event === 'up');
+  assert.ok(up[1] < 80 - 200 && up[1] > 80 - 240, `drag ended at ${up[1]}`);
+  assert.equal(held(touches), 0);
+  // A map that does not scroll is a blocked way: turn each time, then give up as stuck.
+  const still = Array.from({ length: 6 }, () => ({ marker: { deg: 90, r: 1.2 }, ground: [0, 0] }));
+  const blocked = await navigate(navHarness(still, { shift: {}, stuckLimit: 2 }).ctx);
+  assert.deepEqual([blocked.status, blocked.stuck, blocked.drags], ['stuck', 2, 1]);
+});
+
+test('navigate drops from a long climb that does not bring the marker closer', async () => {
+  // The view keeps changing (a real climb), but past climbMs the marker is no nearer: a wall.
+  const frames = (r) => [
+    { cone: 0, marker: { deg: 0, r: 1.2 }, screen: 'climbing' },
+    { cone: 0, marker: { deg: 0, r: r[0] }, screen: 'climbing' },
+    { cone: 0, marker: { deg: 0, r: r[1] }, screen: 'climbing' },
+    { cone: 0, marker: { deg: 0, r: 1.1 }, screen: 'world' },
+    { cone: 0, marker: { deg: 0, r: 0.05 }, screen: 'world' },
+  ];
+  const options = { recover: { climbing: 'attack' }, climbMs: 400, detourMs: 600 };
+  const { ctx, touches } = navHarness(frames([1.2, 1.2]), options);
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.recoveries, result.longClimbs], ['arrived', 1, 1]);
+  assert.equal(held(touches), 0);
+  // A climb that does bring the marker closer goes on.
+  const closer = await navigate(navHarness(frames([1.0, 0.8]), options).ctx);
+  assert.deepEqual([closer.status, closer.recoveries], ['arrived', 0]);
 });
 
 // A 200x100 screen: grey ground, a minimap (0-20, 0-20) whose shade follows `tick`, and red
@@ -921,6 +1124,12 @@ test('mapQuestMarkers and mapWaypoints find tracked quests and unlocked waypoint
     mapWaypoints(image, TP_SCREEN, TELEPORT.waypoint).map((w) => [w.x, w.y]),
     [[60, 30]],
   );
+  // A list of specs (e.g. blue world quests and gold Archon quests) matches any of them.
+  const gold = { ...TELEPORT.quest, rgb: [233, 180, 13] };
+  assert.deepEqual(
+    mapQuestMarkers(image, TP_SCREEN, [gold, TELEPORT.quest], exclude).map((m) => [m.x, m.y]),
+    [[185, 30]],
+  );
 });
 
 test('teleport centres the map on the quest and taps 传送 at the nearest waypoint once', async () => {
@@ -964,6 +1173,31 @@ test('teleport uses an on-map quest diamond whose tap opens an overlap list in p
   ]);
 });
 
+test('teleport can target a visible unlocked waypoint directly for recovery', async () => {
+  const states = {
+    ...MAP_STATES,
+    edge: { screen: 'world_map', waypoints: [[185, 30]] },
+    panel: { screen: 'world_map', waypoints: [[185, 30]] },
+  };
+  const step = (state, x, y) => {
+    if (state === 'world' && near(x, y, 10, 10)) return 'edge';
+    if (state === 'edge' && near(x, y, 185, 30)) return 'panel';
+    return mapStep(state, x, y);
+  };
+  const targetWaypoint = TELEPORT.waypoint;
+  const { ctx, taps } = tpHarness(states, step, MAP_TEXTS, {
+    targetWaypoint,
+    targetText: '传送锚点',
+  });
+  const result = await teleport(ctx);
+  assert.equal(result.status, 'teleported');
+  assert.deepEqual(taps().slice(0, 3), [
+    [10, 10],
+    [185, 30],
+    [180, 92],
+  ]);
+});
+
 test('teleport closes the map without teleporting when the quest is near the player', async () => {
   const states = {
     ...MAP_STATES,
@@ -1001,6 +1235,13 @@ test('teleport reads the HUD quest distance and does not open the map for a clos
     const far = tpHarness(MAP_STATES, mapStep, texts(m), hud);
     assert.equal((await teleport(far.ctx)).status, 'teleported');
   }
+
+  // On a forceScreens screen (e.g. swimming) a close quest is teleported to as well.
+  const forced = tpHarness(MAP_STATES, mapStep, texts('30m'), {
+    ...hud,
+    forceScreens: ['world'],
+  });
+  assert.equal((await teleport(forced.ctx)).status, 'teleported');
 });
 
 test('teleport reports a missing quest or panel without tapping 传送, and never re-taps it', async () => {
@@ -1025,4 +1266,153 @@ test('teleport reports a missing quest or panel without tapping 传送, and neve
   const elsewhere = tpHarness({ ...MAP_STATES, world: { screen: 'dialogue' } }, mapStep, MAP_TEXTS);
   assert.equal((await teleport(elsewhere.ctx)).status, 'interrupted');
   assert.equal(elsewhere.taps().length, 0);
+});
+
+test('teleport zooms a zoomed-out map in until the quest diamond can be seen', async () => {
+  // The map opens zoomed out ('small': no diamond matches); two zoom taps reveal the edge one.
+  const states = {
+    ...MAP_STATES,
+    small: { screen: 'world_map' },
+    small2: { screen: 'world_map' },
+  };
+  const step = (state, x, y) => {
+    if (state === 'world' && near(x, y, 10, 10)) return 'small';
+    if (state === 'small' && near(x, y, 5, 90)) return 'small2';
+    if (state === 'small2' && near(x, y, 5, 90)) return 'edge';
+    return mapStep(state, x, y);
+  };
+  const zoomed = tpHarness(states, step, MAP_TEXTS, { zoomIn: 'zoom', zoomTaps: 3 });
+  zoomed.ctx.buttonCenter = (id) => (id === 'zoom' ? { x: 5, y: 90 } : { x: 10, y: 10 });
+  const result = await teleport(zoomed.ctx);
+  assert.equal(result.status, 'teleported');
+  assert.equal(result.zooms, 2);
+  assert.deepEqual(zoomed.taps().slice(0, 4), [
+    [10, 10],
+    [5, 90],
+    [5, 90],
+    [185, 30],
+  ]);
+
+  // Zooming stops after zoomTaps and reports no_quest.
+  const never = tpHarness(states, (s) => (s === 'world' ? 'small' : s), MAP_TEXTS, {
+    zoomIn: 'zoom',
+    zoomTaps: 2,
+  });
+  never.ctx.buttonCenter = (id) => (id === 'zoom' ? { x: 5, y: 90 } : { x: 10, y: 10 });
+  const none = await teleport(never.ctx);
+  assert.equal(none.status, 'no_quest');
+  assert.equal(none.zooms, 2);
+});
+
+const TRACK = {
+  id: 'track_quest',
+  screens: ['world'],
+  doneScreens: ['world'],
+  open: 'quest',
+  hud: { x: 20, y: 40, w: 20, h: 10, match: '^\\d+\\s*m$' },
+  title: { x: 20, y: 5, w: 20, h: 10 },
+  name: { x: 100, y: 10, w: 60, h: 10 },
+  button: { x: 180, y: 90, w: 30, h: 10 },
+};
+
+// States: world (untracked) → log → world (tracked). `texts[state][box.top]` is the OCR.
+function trackHarness(states, texts, step) {
+  const touches = [];
+  let clock = 0,
+    backs = 0,
+    state = states.start;
+  const ctx = {
+    routine: TRACK,
+    screen: TP_SCREEN,
+    buttonCenter: () => ({ x: 10, y: 10 }),
+    rect: (e) => ({
+      left: e.x - e.w / 2,
+      top: e.y - e.h / 2,
+      right: e.x + e.w / 2,
+      bottom: e.y + e.h / 2,
+    }),
+    readText: async (image, box) => texts[image.tag]?.[box.top] ?? '',
+    frame: async () => ({ screen: states[state], image: { width: 200, height: 100, tag: state } }),
+    touch: async (event, x, y) => {
+      touches.push([event, x, y]);
+      if (event === 'up') state = step(state, x, y) ?? state;
+    },
+    back: async () => {
+      backs++;
+      state = 'world';
+    },
+    sleep: async (ms) => (clock += ms),
+    now: () => clock,
+  };
+  return { ctx, taps: () => touches.filter(([e]) => e === 'down').length, backs: () => backs };
+}
+const TRACK_STATES = { start: 'untracked', untracked: 'world', log: 'menu', world: 'world' };
+const trackStep = (state, x, y) =>
+  state === 'untracked' && x === 10 && y === 10
+    ? 'log'
+    : state === 'log' && x === 180 && y === 90
+      ? 'world'
+      : undefined;
+
+test('trackQuest taps 追踪目标 once and verifies the HUD quest distance', async () => {
+  const texts = {
+    log: { 0: '进行中', 5: '无意义的等待的意义', 85: '追踪目标' },
+    world: { 35: '28m' },
+  };
+  const h = trackHarness(TRACK_STATES, texts, trackStep);
+  const result = await trackQuest(h.ctx);
+  assert.equal(result.status, 'tracked');
+  assert.equal(result.quest, '无意义的等待的意义');
+  assert.equal(result.distance, '28m');
+  assert.equal(h.taps(), 2);
+});
+
+test('trackQuest does nothing when a quest is tracked and closes a log that says 停止追踪', async () => {
+  const shown = trackHarness(
+    { ...TRACK_STATES, start: 'world' },
+    { world: { 35: '9m' } },
+    trackStep,
+  );
+  assert.equal((await trackQuest(shown.ctx)).status, 'already_tracked');
+  assert.equal(shown.taps(), 0);
+
+  const texts = { log: { 0: '进行中', 5: '善后工作', 85: '停止追踪' } };
+  const log = trackHarness(TRACK_STATES, texts, trackStep);
+  const result = await trackQuest(log.ctx);
+  assert.equal(result.status, 'already_tracked');
+  assert.equal(result.closed, true);
+  assert.equal(log.taps(), 1);
+  assert.equal(log.backs(), 1);
+
+  const other = trackHarness(TRACK_STATES, { log: { 0: '背包' } }, trackStep);
+  assert.equal((await trackQuest(other.ctx)).status, 'no_quest_log');
+});
+
+test('trackQuest closes the big map a far quest opens, once, and verifies the HUD', async () => {
+  const texts = {
+    log: { 0: '进行中', 5: '无意义的等待的意义', 85: '追踪目标' },
+    world: { 35: '257m' },
+  };
+  const step = (state, x, y) =>
+    state === 'log' && x === 180 && y === 90 ? 'map' : trackStep(state, x, y);
+  const h = trackHarness({ ...TRACK_STATES, map: 'world_map' }, texts, step);
+  h.ctx.routine = { ...TRACK, mapScreens: ['world_map'] };
+  const result = await trackQuest(h.ctx);
+  assert.equal(result.status, 'tracked');
+  assert.equal(result.viaMap, true);
+  assert.equal(result.distance, '257m');
+  assert.equal(h.taps(), 2);
+  assert.equal(h.backs(), 1);
+});
+
+test('hudDistance reads the HUD quest distance 0m that OCR returns as om', () => {
+  assert.deepEqual(['om', 'Om', 'o m', '1om', '257m', '', '已到达任务区域'].map(hudDistance), [
+    '0m',
+    '0m',
+    '0 m',
+    '10m',
+    '257m',
+    '',
+    '0m',
+  ]);
 });

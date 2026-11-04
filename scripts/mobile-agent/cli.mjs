@@ -3,10 +3,15 @@ import { mkdir, open, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createDevice } from './create-device.mjs';
 import { TypeSafePolicy, runAgent } from './agent.mjs';
+import { runContinuousAgent } from './continuous.mjs';
 import { pooledRequest, decodeJson } from './http.mjs';
 import { measuredRequest, summarizeMetrics } from './metrics.mjs';
 import { confirmInput } from './input-verification.mjs';
 import { annotateScreenshot } from './layout.mjs';
+import { withHealthGuard } from './device-health.mjs';
+import { frameRecorder } from './frames.mjs';
+import { startRecording } from './recorder.mjs';
+import { deviceBackend } from './create-device.mjs';
 import { verifyPromptPickups } from '../game-verifiers.mjs';
 
 const help = `Device harness: Mobilerun (Node 22+ and curl) or ADB (JEV_DEVICE_BACKEND=adb)
@@ -35,13 +40,19 @@ Options:
   --layout PATH                  Fixed-control profile for game UIs (or JEV_LAYOUT)
   --snapshot PATH                Original observe JSON for tap-element
   --text VALUE                   Repeatable exact text candidates for TypeSafe
-  --steps N                      Maximum actions (default 10, maximum 100)
+  --steps N                      Maximum actions (default 10; continuous mode: 100)
+  --continuous                   Keep playing after DONE/BLOCKED or a recoverable stalled cycle
+  --cycle-steps N                Actions per continuous-play cycle (default 12, maximum 100)
   --confidence N                 Optional operation/target cutoff (default 0; disabled)
   --settle-ms N                  Extra fixed wait after actions (default 0, or the layout's settleMs)
   --wait-timeout-ms N            Consecutive loading wait budget (default 15000)
   --text-completion MODE         accepted (verify locally) or committed (server waits)
   --execute                      Execute TypeSafe-selected actions
   --trace PATH                   Save model requests, responses, actions, and final state (JSONL)
+  --frames DIR                   run: save each observed game frame (half size, capture time in
+                                 the file name, a stamp strip, the trace and DIR/frames.jsonl)
+  --record PATH.mkv              run (adb): record the whole run with scrcpy (SCRCPY_PATH);
+                                 trace events gain videoMs, their offset into the video
   --expect one|all|found         verify-pickup: one entry, the whole list, or any pickup after exploring
 
 Keys: MOBILERUN_API_KEY (or MOBILERUN_CLOUD_API_KEY) unless JEV_DEVICE_BACKEND=adb;
@@ -65,9 +76,13 @@ async function main() {
       snapshot: { type: 'string' },
       clear: { type: 'boolean' },
       execute: { type: 'boolean' },
+      continuous: { type: 'boolean' },
       trace: { type: 'string' },
+      frames: { type: 'string' },
+      record: { type: 'string' },
       expect: { type: 'string' },
-      steps: { type: 'string', default: '10' },
+      steps: { type: 'string' },
+      'cycle-steps': { type: 'string', default: '12' },
       confidence: { type: 'string', default: '0' },
       'settle-ms': { type: 'string' },
       'wait-timeout-ms': { type: 'string', default: '15000' },
@@ -162,6 +177,8 @@ async function main() {
   }
   if (command === 'run') {
     arity(1);
+    const maxSteps = Number(values.steps ?? (values.continuous ? 100 : 10));
+    const cycleSteps = Number(values['cycle-steps']);
     const settleMs = values['settle-ms'] === undefined ? undefined : Number(values['settle-ms']);
     let trace;
     if (values.trace) {
@@ -170,10 +187,32 @@ async function main() {
     }
     const record = async (event) => {
       if (trace)
-        await trace.write(JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n');
+        await trace.write(
+          JSON.stringify({
+            at: new Date().toISOString(),
+            ...(recording ? { videoMs: recording.videoMs() } : {}),
+            ...event,
+          }) + '\n',
+        );
     };
+    let recording;
+    if (values.record) {
+      if (deviceBackend() !== 'adb') throw new Error('--record needs JEV_DEVICE_BACKEND=adb.');
+      recording = await startRecording({ path: values.record, serial: device.deviceId });
+      print({ recording: values.record });
+    }
     const metrics = [];
+    const saveFrame = values.frames ? frameRecorder(values.frames) : undefined;
     const onMetric = async (metric) => record({ event: 'request_timing', ...metric });
+    // Real phones overheat on long game runs: rest between steps when throttled.
+    if (typeof device.health === 'function' && process.env.JEV_HEALTH_GUARD !== '0')
+      withHealthGuard(device, {
+        screenOff: process.env.JEV_REST_SCREEN_OFF === '1',
+        onEvent: async (event) => {
+          await record(event);
+          if (event.event !== 'health') print(event);
+        },
+      });
     device.request = measuredRequest({ service: 'mobilerun', metrics, onMetric });
     const modelRequest = measuredRequest({
       service: 'typesafe',
@@ -182,6 +221,12 @@ async function main() {
       request: pooledRequest,
     });
     try {
+      if (recording)
+        await record({
+          event: 'recording',
+          path: values.record,
+          startedAt: new Date(recording.startedAt).toISOString(),
+        });
       await record({
         event: 'run',
         deviceId: device.deviceId,
@@ -189,12 +234,15 @@ async function main() {
         goal: args[0],
         execute: values.execute ?? false,
         confidenceThreshold: Number(values.confidence),
-        maxSteps: Number(values.steps),
+        maxSteps,
+        continuous: values.continuous ?? false,
+        ...(values.continuous ? { cycleSteps } : {}),
         settleMs: settleMs ?? 0,
         ...(device.layout ? { layoutSettleMs: device.layout.settleMs ?? 0 } : {}),
         waitTimeoutMs: Number(values['wait-timeout-ms']),
       });
-      const result = await runAgent({
+      const runner = values.continuous ? runContinuousAgent : runAgent;
+      const result = await runner({
         device,
         policy: new TypeSafePolicy({
           threshold: Number(values.confidence),
@@ -208,7 +256,13 @@ async function main() {
         goal: args[0],
         texts: values.text,
         execute: values.execute,
-        maxSteps: Number(values.steps),
+        maxSteps,
+        ...(values.continuous
+          ? {
+              cycleSteps,
+              onCycle: async (event) => record({ event: 'continuous_cycle', ...event }),
+            }
+          : {}),
         settleMs,
         waitTimeoutMs: Number(values['wait-timeout-ms']),
         onStep: async (step) => {
@@ -219,7 +273,17 @@ async function main() {
           print({ event: 'decision', ...summary });
         },
         onAction: async (event) => record({ event: 'action_executed', ...event }),
-        onObservation: async (event) => record({ event: 'observation', ...event }),
+        onObservation: async (event) => {
+          await record({ event: 'observation', ...event });
+          if (!saveFrame) return;
+          // A frame that fails to save must not stop the run; the trace notes it instead.
+          try {
+            const frame = await saveFrame(event);
+            if (frame) await record({ event: 'frame', ...frame });
+          } catch (error) {
+            await record({ event: 'frame_error', step: event.step, message: error.message });
+          }
+        },
       });
       await record({ event: 'result', ...result });
       const performanceReport = { timings: result.timings, requests: summarizeMetrics(metrics) };
@@ -230,11 +294,19 @@ async function main() {
         timings: result.timings,
         ...(values.trace ? { trace: values.trace } : {}),
       });
-      if (!['done', 'preview'].includes(result.status)) process.exitCode = 2;
+      if (!['continuous_limit', 'done', 'preview'].includes(result.status)) process.exitCode = 2;
     } catch (error) {
       await record({ event: 'error', message: error.message });
       throw error;
     } finally {
+      if (recording) {
+        const stopped = await recording.stop();
+        await record({
+          event: 'recording_stopped',
+          path: stopped.path,
+          stoppedAt: new Date(stopped.stoppedAt).toISOString(),
+        });
+      }
       await trace?.close();
     }
     return;

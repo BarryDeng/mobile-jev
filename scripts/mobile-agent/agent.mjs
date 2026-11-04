@@ -17,6 +17,7 @@ export async function runAgent({
   settleTimeoutMs = 400,
   waitTimeoutMs = 15_000,
   inputTimeoutMs = 2500,
+  modelRetryMs = 2000,
   onStep = () => {},
   onAction = () => {},
   onObservation = () => {},
@@ -27,6 +28,7 @@ export async function runAgent({
     settleMs: settleMs ?? 0,
     settleTimeoutMs,
     inputTimeoutMs,
+    modelRetryMs,
   })) {
     if (!Number.isFinite(value) || value < 0 || value > 10_000)
       throw new Error(`${key} must be 0–10000.`);
@@ -40,6 +42,7 @@ export async function runAgent({
     observationMs: 0,
     waitMs: 0,
     staleRetries: 0,
+    modelRetries: 0,
     modelCalls: 0,
   };
   const history = [],
@@ -76,20 +79,34 @@ export async function runAgent({
     },
   });
   let consecutiveWaits = 0,
-    consecutiveStale = 0;
+    consecutiveStale = 0,
+    modelFailures = 0;
   let waitingSince;
   // Stale decisions never dispatch input, but still consume a separate model-call budget.
   for (let attempt = 0; attempt < maxSteps * 2 + 4; attempt++) {
     const modelStart = performance.now();
-    const decision = await policy.decide({
-      goal,
-      observation,
-      history,
-      texts,
-      apps: installedApps,
-    });
-    timings.modelMs += performance.now() - modelStart;
-    timings.modelCalls++;
+    let decision;
+    try {
+      decision = await policy.decide({
+        goal,
+        observation,
+        history,
+        texts,
+        apps: installedApps,
+      });
+      modelFailures = 0;
+    } catch (error) {
+      // A model call that never reached the server changed nothing on the device: back off,
+      // observe again (the game keeps running) and ask anew, a bounded number of times.
+      if (!error?.transient || ++modelFailures > 2) throw error;
+      timings.modelRetries++;
+      await wait(modelRetryMs * modelFailures);
+      observation = await observe();
+      continue;
+    } finally {
+      timings.modelMs += performance.now() - modelStart;
+      timings.modelCalls++;
+    }
     const step = history.length;
     await onStep({ step, attempt, ...decision });
     if (decision.status !== 'action') return finish(decision.status, decision);

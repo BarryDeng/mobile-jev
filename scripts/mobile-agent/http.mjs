@@ -94,7 +94,12 @@ export function pooledRequest({ url, apiKey, method = 'GET', body, timeoutMs = 3
     });
     req.on('error', () => {
       clearTimeout(timer);
-      reject(new Error('Model API transport failed; no action executed.'));
+      // Nothing reached the device; the agent loop may observe again and ask anew.
+      reject(
+        Object.assign(new Error('Model API transport failed; no action executed.'), {
+          transient: true,
+        }),
+      );
     });
     req.end(payload);
   });
