@@ -11,6 +11,7 @@ import { annotateScreenshot } from './layout.mjs';
 import { withHealthGuard } from './device-health.mjs';
 import { frameRecorder } from './frames.mjs';
 import { startRecording } from './recorder.mjs';
+import { startDebugUi } from './debug-ui.mjs';
 import { deviceBackend } from './create-device.mjs';
 import { verifyPromptPickups } from '../game-verifiers.mjs';
 
@@ -53,6 +54,9 @@ Options:
                                  the file name, a stamp strip, the trace and DIR/frames.jsonl)
   --record PATH.mkv              run (adb): record the whole run with scrcpy (SCRCPY_PATH);
                                  trace events gain videoMs, their offset into the video
+  --debug-ui                     run: open a live local page (127.0.0.1) with the clock, detected
+                                 screen and threat, decisions, routine touches and the latest frame
+  --debug-port N                 Port for --debug-ui (default: any free port)
   --expect one|all|found         verify-pickup: one entry, the whole list, or any pickup after exploring
 
 Keys: MOBILERUN_API_KEY (or MOBILERUN_CLOUD_API_KEY) unless JEV_DEVICE_BACKEND=adb;
@@ -80,6 +84,8 @@ async function main() {
       trace: { type: 'string' },
       frames: { type: 'string' },
       record: { type: 'string' },
+      'debug-ui': { type: 'boolean' },
+      'debug-port': { type: 'string' },
       expect: { type: 'string' },
       steps: { type: 'string' },
       'cycle-steps': { type: 'string', default: '12' },
@@ -181,11 +187,21 @@ async function main() {
     const cycleSteps = Number(values['cycle-steps']);
     const settleMs = values['settle-ms'] === undefined ? undefined : Number(values['settle-ms']);
     let trace;
+    let debugUi;
+    if (values['debug-ui']) {
+      debugUi = await startDebugUi({
+        layout: device.layout,
+        port: Number(values['debug-port'] ?? 0),
+      });
+      device.debug = debugUi.device;
+      print({ debugUi: debugUi.url });
+    }
     if (values.trace) {
       await mkdir(dirname(values.trace), { recursive: true });
       trace = await open(values.trace, 'wx', 0o600);
     }
     const record = async (event) => {
+      debugUi?.publish(event);
       if (trace)
         await trace.write(
           JSON.stringify({
@@ -308,6 +324,7 @@ async function main() {
         });
       }
       await trace?.close();
+      await debugUi?.close();
     }
     return;
   }

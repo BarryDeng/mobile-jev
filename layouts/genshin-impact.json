@@ -77,9 +77,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -173,160 +173,160 @@
           "anchor": "center",
           "x": 1444,
           "y": 334,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 334,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 382,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 382,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 424,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 424,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 472,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 472,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 604,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 604,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 652,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 652,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 694,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 694,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 742,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 742,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         }
       ]
@@ -392,9 +392,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -472,128 +472,128 @@
           "anchor": "center",
           "x": 1444,
           "y": 379,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 379,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 427,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 427,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 469,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 469,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 517,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 517,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 559,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 559,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 607,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 607,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 649,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 649,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 697,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 697,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         }
       ]
@@ -659,9 +659,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -723,96 +723,96 @@
           "anchor": "center",
           "x": 1444,
           "y": 424,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 424,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 472,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 472,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 604,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 604,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 652,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 652,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         }
       ]
@@ -878,9 +878,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -926,64 +926,64 @@
           "anchor": "center",
           "x": 1444,
           "y": 469,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 469,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 517,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 517,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 559,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 559,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 607,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 607,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         }
       ]
@@ -1049,9 +1049,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -1156,9 +1156,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -1188,32 +1188,32 @@
           "anchor": "center",
           "x": 1444,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 514,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1444,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         },
         {
           "anchor": "center",
           "x": 1484,
           "y": 562,
-          "rgb": [44, 54, 62],
-          "tolerance": 14,
+          "rgb": [42, 58, 74],
+          "tolerance": 20,
           "drift": true
         }
       ]
@@ -1230,9 +1230,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         },
         {
@@ -1373,15 +1373,15 @@
       "probes": [
         {
           "anchor": "top-left",
-          "x": 436,
-          "y": 42,
+          "x": 512,
+          "y": 50,
           "rgb": [236, 229, 216],
           "tolerance": 25
         },
         {
           "anchor": "top-left",
-          "x": 622,
-          "y": 76,
+          "x": 540,
+          "y": 72,
           "rgb": [236, 229, 216],
           "tolerance": 25
         },
@@ -1456,15 +1456,15 @@
         },
         {
           "anchor": "top-left",
-          "x": 436,
-          "y": 42,
+          "x": 512,
+          "y": 50,
           "rgb": [236, 229, 216],
           "tolerance": 25
         },
         {
           "anchor": "top-left",
-          "x": 622,
-          "y": 76,
+          "x": 540,
+          "y": 72,
           "rgb": [236, 229, 216],
           "tolerance": 25
         }
@@ -1569,6 +1569,86 @@
           "y": 300,
           "rgb": [62, 69, 86],
           "tolerance": 16
+        }
+      ]
+    },
+    "time_adjust": {
+      "description": "Time adjustment clock 调整时间 on the right half (sun, moon and a dial), opened when a quest asks to wait for a time of day: it already shows the target time under 调整到; 确认 confirm at the bottom right skips game time to it",
+      "probes": [
+        {
+          "anchor": "center",
+          "x": 1692,
+          "y": 1004,
+          "rgb": [236, 229, 216],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1912,
+          "y": 1004,
+          "rgb": [236, 229, 216],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1612,
+          "y": 1004,
+          "rgb": [49, 49, 49],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1749,
+          "y": 280,
+          "rgb": [236, 229, 216],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 1749,
+          "y": 188,
+          "rgb": [255, 255, 208],
+          "tolerance": 30
+        }
+      ]
+    },
+    "time_adjusted": {
+      "description": "Time adjustment clock 调整时间 after the time was already changed: 确认 is gone (时间少于30分钟 shows instead) and the clock stays open over the world; BACK closes it",
+      "probes": [
+        {
+          "anchor": "center",
+          "x": 1749,
+          "y": 280,
+          "rgb": [236, 229, 216],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 2192,
+          "y": 59,
+          "rgb": [236, 229, 216],
+          "tolerance": 20
+        },
+        {
+          "anchor": "center",
+          "x": 2210,
+          "y": 59,
+          "rgb": [59, 66, 85],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1749,
+          "y": 700,
+          "rgb": [49, 52, 60],
+          "tolerance": 25
+        },
+        {
+          "anchor": "center",
+          "x": 1924,
+          "y": 1004,
+          "rgb": [39, 41, 35],
+          "tolerance": 35
         }
       ]
     },
@@ -1716,9 +1796,9 @@
         },
         {
           "anchor": "bottom-right",
-          "x": 2074,
-          "y": 694,
-          "rgb": [232, 236, 240],
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
           "tolerance": 30
         }
       ],
@@ -1756,9 +1836,9 @@
       "label": "Active character health 当前角色血量",
       "anchor": "bottom",
       "x": 1200,
-      "y": 1035,
+      "y": 994,
       "w": 300,
-      "h": 34,
+      "h": 30,
       "match": "^\\d+\\s*/\\s*\\d+$",
       "screens": [
         "world",
@@ -1773,6 +1853,28 @@
       ]
     }
   ],
+  "healthBar": {
+    "label": "Active character HP bar 当前角色血条",
+    "anchor": "bottom",
+    "x": 1202,
+    "y": 992,
+    "w": 390,
+    "h": 12,
+    "rgb": [150, 215, 34],
+    "tolerance": 40,
+    "minDrop": 0.03,
+    "screens": [
+      "world",
+      "world_talk",
+      "world_prompts_1",
+      "world_prompts_2",
+      "world_prompts_3",
+      "world_prompts_4",
+      "world_prompts_5",
+      "world_climbing",
+      "world_swimming"
+    ]
+  },
   "joystick": {
     "anchor": "bottom-left",
     "x": 430,
@@ -1792,7 +1894,14 @@
     "y": 450,
     "degreesPerPixel": 0.45,
     "deadzone": 22,
-    "maxDrag": 420
+    "maxDrag": 420,
+    "curve": [
+      [40, 6],
+      [80, 19],
+      [140, 55],
+      [220, 87],
+      [320, 110]
+    ]
   },
   "enemy": {
     "label": "Enemy HP bars 敌人血条",
@@ -1826,9 +1935,10 @@
   "routines": [
     {
       "id": "navigate",
+      "damageStop": true,
       "type": "navigate",
       "label": "Go to quest marker 前往任务标记",
-      "description": "Code turns the camera toward the tracked quest's yellow marker on the minimap and runs toward it for up to about 25 seconds (longer when screenshots are slow), re-aiming as it goes. It stops when the marker reaches the character (arrived), when someone to talk to appears, when the screen leaves the open world, or when the character is stuck. The quest distance text shows the remaining distance; use it again while the distance keeps shrinking. If the quest is more than 150m away, use teleport first instead of walking; walking that far can lead into water or cliffs. When the quest marks an area (a yellow ring on the minimap, HUD 已到达任务区域), it walks to the area's centre and reports arrived there; the quest goal is then somewhere around that spot.",
+      "description": "Code turns the camera toward the tracked quest's yellow marker on the minimap and runs toward it for up to about 25 seconds (longer when screenshots are slow), re-aiming as it goes. It stops when the marker reaches the character (arrived), when someone to talk to appears, when the screen leaves the open world, or when the character is stuck. The quest distance text shows the remaining distance; use it again while the distance keeps shrinking. If the quest is more than 150m away, use teleport first instead of walking; walking that far can lead into water or cliffs. When the quest marks an area (a yellow ring on the minimap, HUD 已到达任务区域), it walks into the ring, then stands still a few seconds in case the quest reacts; with no change it walks circles inside the ring for about 20 seconds. It reports arrived with area changed as soon as something happens there (a new screen such as a talk or pickup prompt, or the ring going away), or searched when nothing happened; then look at the screen or try something else (explore, interact, fight) rather than walking into the area again. It stops with attacked when code measures the active character losing health on the way (enemies are hitting it, maybe out of view); then fight with Fight 战斗.",
       "screens": [
         "world",
         "world_talk",
@@ -1850,12 +1960,29 @@
       "stuckButton": "jump",
       "progressText": "quest_distance",
       "progressMetres": 5,
+      "aboveText": "高处",
+      "sidestepMs": 2000,
+      "sidestepTries": 2,
       "revealButton": "quest_objective",
       "marker": {
         "rgb": [251, 232, 2],
         "tolerance": 45,
         "min": [180, 120, 0],
         "max": [255, 255, 90],
+        "colors": [
+          {
+            "rgb": [182, 155, 232],
+            "tolerance": 30,
+            "hud": {
+              "anchor": "top-left",
+              "x": 162,
+              "y": 330,
+              "w": 44,
+              "h": 44
+            },
+            "hudShare": 0.04
+          }
+        ],
         "area": {
           "minRadius": 0.1,
           "maxResidual": 0.2,
@@ -1863,10 +1990,18 @@
           "max": [235, 215, 130]
         }
       },
-      "shift": { "minShift": 3 },
-      "turnDeg": 20,
+      "shift": {
+        "minShift": 3
+      },
+      "turnDeg": 10,
+      "aimTries": 2,
+      "aimDeg": 10,
+      "climbOffDeg": 60,
       "arriveRadius": 0.03,
       "areaArrive": 0.25,
+      "areaWaitMs": 4000,
+      "areaCircleMs": 20000,
+      "areaHopMs": 1200,
       "screenMarker": {
         "rgb": [233, 180, 13],
         "tolerance": [25, 30, 25],
@@ -1889,13 +2024,15 @@
       "segmentMs": 600,
       "stuckLimit": 5,
       "minFrames": 10,
-      "maxMs": 25000
+      "maxMs": 25000,
+      "steer": true
     },
     {
       "id": "explore",
+      "damageStop": true,
       "type": "explore",
       "label": "Explore 随机游走",
-      "description": "Code walks the character a short distance roughly straight ahead (where the camera faces, within 30° either side): up to 5 short hops of about one step each, checking the screen standing still after every hop, and stops as soon as a new interaction prompt appears, a new enemy HP bar appears (enemy), the screen leaves the open world, or the character stays stuck. Use it to look for something to pick up, talk to or interact with; if nothing appears, use it again to keep exploring further.",
+      "description": "Code walks the character a short distance roughly straight ahead (where the camera faces, within 30° either side): up to 5 short hops of about one step each, checking the screen standing still after every hop, and stops as soon as a new interaction prompt appears, a new enemy HP bar appears (enemy), the screen leaves the open world, or the character stays stuck. Use it to look for something to pick up, talk to or interact with; if nothing appears, use it again to keep exploring further. It stops with attacked when code measures the active character losing health; then fight with Fight 战斗.",
       "screens": [
         "world",
         "world_talk",
@@ -1953,9 +2090,10 @@
     },
     {
       "id": "combat",
+      "damageStop": true,
       "type": "combat",
       "label": "Fight 战斗",
-      "description": "Code fights nearby enemies: each active character uses elemental skill, a few normal attacks, then tries the burst, then the next teammate who is still standing is switched in (downed teammates are skipped; a revive dialog is closed with 取消 without using items). It always fights one round first (attacks turn towards the nearest enemy), then watches for red enemy HP bars: if none appeared it stops (no_enemy), and once they have been gone for 2 checks in a row it stops (clear). It does not walk towards enemies, so get close first; otherwise it runs up to 45 seconds.",
+      "description": "Code fights nearby enemies: each active character uses elemental skill, a few normal attacks, then tries the burst, then the next teammate who is still standing is switched in (a downed teammate is tapped once to open the revive dialog and revived with the preselected food; when no food is left the dialog is closed with 取消 and the result reports noFood, so heal at a Statue of The Seven to revive them). It always fights one round first (attacks turn towards the nearest enemy), then watches for red enemy HP bars: if none appeared it stops (no_enemy), and once they have been gone for 2 checks in a row it stops (clear). It does not walk towards enemies, so get close first; otherwise it runs up to 45 seconds. While code measures the active character still losing health it keeps fighting even without visible bars.",
       "screens": [
         "world",
         "world_talk",
@@ -1980,15 +2118,21 @@
       "recover": {
         "revive_dialog": "revive_cancel"
       },
+      "revive": {
+        "screen": "revive_dialog",
+        "confirm": "revive_confirm",
+        "cancel": "revive_cancel"
+      },
       "attackTaps": 6,
       "clearFrames": 2,
       "maxMs": 45000
     },
     {
       "id": "approach",
+      "damageStop": true,
       "type": "approach",
       "label": "Approach enemy 接近敌人",
-      "description": "Code looks for the nearest enemy: an HP bar, or a distant enemy's level label (Lv.) when it is too far away for a bar. If none is in view it first turns towards a red off-screen enemy arrow and walks a step towards it, and otherwise turns the camera around in place (a full circle, ending facing the same way as before). It then walks towards the enemy, turning the camera to keep it centred, and stops once the enemy is within fighting range (near), when no enemy is found all around (no_enemy), when it loses sight of the enemy (lost), or when the character is stuck. Use it whenever an enemy is visible or indicated, even far away, and to search for enemies before exploring further; use Fight 战斗 after it reports the enemy is near.",
+      "description": "Code looks for the nearest enemy: an HP bar, or a distant enemy's level label (Lv.) when it is too far away for a bar. If none is in view it first turns towards a red off-screen enemy arrow and walks a step towards it, and otherwise turns the camera around in place (a full circle, ending facing the same way as before). It then walks towards the enemy, turning the camera to keep it centred, and stops once the enemy is within fighting range (near), when no enemy is found all around (no_enemy), when it loses sight of the enemy (lost), or when the character is stuck. Use it whenever an enemy is visible or indicated, even far away, and to search for enemies before exploring further; use Fight 战斗 after it reports the enemy is near. It stops with attacked when code measures the active character losing health before reaching a bar (an enemy is already hitting it, maybe out of view); then fight with Fight 战斗 where you stand.",
       "screens": [
         "world",
         "world_talk",
@@ -2051,6 +2195,12 @@
           "tolerance": [22, 25, 20],
           "pixels": [350, 650],
           "size": [42, 60]
+        },
+        {
+          "rgb": [182, 155, 232],
+          "tolerance": [30, 30, 30],
+          "pixels": [200, 800],
+          "size": [32, 54]
         }
       ],
       "waypoint": {
@@ -2256,7 +2406,7 @@
       "id": "track_quest",
       "type": "track_quest",
       "label": "Track quest 追踪任务",
-      "description": "Code makes sure a quest is tracked. If the HUD already shows a quest distance it does nothing. Otherwise it opens the quest log 任务, and if the selected quest (usually the newest) is not tracked it taps 追踪目标 once, returns to the open world and checks that the HUD shows the quest. Use it when no tracked quest objective is shown on the HUD.",
+      "description": "Code makes sure a quest is tracked. If the HUD already shows a quest distance it does nothing, unless teleport just found no quest on the map (the quest is in another region): then it re-tracks it anyway. Otherwise it opens the quest log 任务 and taps 追踪目标 for the selected quest (usually the newest); a quest that is tracked but shows no HUD distance (it is in another region) is untracked and tracked again. A near quest returns to the open world and the HUD shows it (tracked). A far quest makes the game open the world map on it; code leaves that map open (tracked_far) so you can teleport there right away. Use it when no tracked quest objective or distance is shown on the HUD, or after teleport found no quest on the map.",
       "screens": [
         "world",
         "world_talk",
@@ -2313,7 +2463,9 @@
       "mapScreens": ["world_map"],
       "openMs": 1500,
       "settleMs": 800,
-      "maxMs": 10000
+      "maxMs": 10000,
+      "keepMap": true,
+      "retrack": true
     }
   ],
   "buttons": [
@@ -2770,10 +2922,10 @@
       "id": "normal_attack",
       "label": "Normal attack 普通攻击",
       "anchor": "bottom-right",
-      "x": 2103,
-      "y": 927,
-      "w": 130,
-      "h": 130,
+      "x": 1923,
+      "y": 825,
+      "w": 180,
+      "h": 180,
       "screens": [
         "world",
         "world_talk",
@@ -2789,7 +2941,7 @@
       "id": "elemental_skill",
       "label": "Elemental skill 元素战技",
       "anchor": "bottom-right",
-      "x": 1735,
+      "x": 1740,
       "y": 930,
       "w": 140,
       "h": 140,
@@ -2808,10 +2960,10 @@
       "label": "Elemental burst 元素爆发",
       "description": "Only works when fully charged",
       "anchor": "bottom-right",
-      "x": 1925,
-      "y": 820,
-      "w": 170,
-      "h": 170,
+      "x": 1572,
+      "y": 968,
+      "w": 120,
+      "h": 120,
       "screens": [
         "world",
         "world_talk",
@@ -3078,6 +3230,28 @@
       "w": 400,
       "h": 70,
       "screens": ["revive_dialog"]
+    },
+    {
+      "id": "revive_confirm",
+      "label": "Confirm revive 确认",
+      "description": "Revives the downed teammate with the preselected food item",
+      "anchor": "center",
+      "x": 1480,
+      "y": 868,
+      "w": 400,
+      "h": 70,
+      "screens": ["revive_dialog"]
+    },
+    {
+      "id": "time_confirm",
+      "label": "Confirm time 确认",
+      "description": "Skips game time to the target time shown under 调整到 and closes the clock",
+      "anchor": "center",
+      "x": 1749,
+      "y": 1004,
+      "w": 500,
+      "h": 70,
+      "screens": ["time_adjust"]
     },
     {
       "id": "revive_defeated",

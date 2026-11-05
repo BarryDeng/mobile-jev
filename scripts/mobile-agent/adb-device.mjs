@@ -342,10 +342,14 @@ export class AdbDevice extends MobilerunDevice {
     return parseHealth(text);
   }
 
-  // Sleep or wake the screen; waking also dismisses a keyguard without a credential.
+  // Sleep or wake the screen; waking also dismisses a keyguard without a credential. A keyguard
+  // can appear a moment after waking from a long rest, so it is checked and dismissed again.
   async setScreen(on) {
     await this.shell(
-      on ? 'input keyevent 224; sleep 1; wm dismiss-keyguard' : 'input keyevent 223',
+      on
+        ? 'input keyevent 224; sleep 1; wm dismiss-keyguard; for i in 1 2 3; do sleep 1; ' +
+            "dumpsys window | grep -q 'isKeyguardShowing=true' || break; wm dismiss-keyguard; done"
+        : 'input keyevent 223',
     );
   }
 

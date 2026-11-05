@@ -21,7 +21,14 @@ const WORLD_SCREENS = new Set([
   'world_swimming',
 ]);
 
-const BACK_SCREENS = new Set(['confirm_dialog', 'menu', 'quest_log', 'quest_map', 'world_map']);
+const BACK_SCREENS = new Set([
+  'confirm_dialog',
+  'menu',
+  'quest_log',
+  'quest_map',
+  'time_adjusted',
+  'world_map',
+]);
 
 export function continuousGoal(goal) {
   return `${goal.trim()}
@@ -33,6 +40,11 @@ single objective is complete, not that continuous play should stop.`;
 }
 
 export function healthRatio(observation) {
+  const reading = healthReading(observation);
+  return reading ? reading.current / reading.maximum : null;
+}
+
+function healthReading(observation) {
   const text = observation.elements
     ?.find((element) => element.id === 'layout-text.active_health')
     ?.text?.replace(/\s/gu, '');
@@ -40,7 +52,34 @@ export function healthRatio(observation) {
   if (!match) return null;
   const current = Number(match[1]);
   const maximum = Number(match[2]);
-  return maximum > 0 && current <= maximum ? current / maximum : null;
+  return maximum > 0 && current <= maximum ? { current, maximum } : null;
+}
+
+/**
+ * Why code should start a fight now, or undefined. Health falling between two observations of the
+ * same character (equal maximum HP) means enemies are hitting it, even when none is on screen; an
+ * approach that code verified as `near` already put an enemy in range. A drop across a combat
+ * routine is damage taken in that fight, not a new attack.
+ */
+export function fightReason(observation, { previous, lastRoutine, minDrop = 0.02 } = {}) {
+  if (!WORLD_SCREENS.has(observation.layout?.screen)) return undefined;
+  if (!available(observation, 'layout-routine.combat')) return undefined;
+  const now = healthReading(observation);
+  if (
+    now &&
+    previous &&
+    lastRoutine?.routine !== 'combat' &&
+    now.maximum === previous.maximum &&
+    previous.current - now.current >= minDrop * now.maximum
+  )
+    return `health fell from ${previous.current} to ${now.current}/${now.maximum}, so enemies are attacking: fight back`;
+  if (observation.layout?.threat === 'attacked')
+    return 'health is falling, so enemies are attacking: fight back';
+  if (lastRoutine?.routine === 'approach' && lastRoutine.status === 'near')
+    return 'the approach reached an enemy: fight it';
+  if (observation.layout?.threat === 'enemy_near')
+    return 'an enemy is within fighting range: fight it';
+  return undefined;
 }
 
 const actionDecision = (elementId, reason) => ({
@@ -59,7 +98,7 @@ function available(observation, id) {
 
 export function continuousRecovery(
   observation,
-  { reason = 'continue', index = 0, skip = new Set(), allowHeal = true } = {},
+  { reason = 'continue', index = 0, skip = new Set(), allowHeal = true, downed = false } = {},
 ) {
   const screen = observation.layout?.screen;
   const pick = (ids, why) => {
@@ -71,6 +110,8 @@ export function continuousRecovery(
     return pick(['layout.revive_defeated'], 'revive the defeated character');
   if (screen === 'defeated_choice')
     return pick(['layout.revive_defeated_choice'], 'revive the defeated party');
+  if (screen === 'time_adjust')
+    return pick(['layout.time_confirm'], 'confirm the time the quest is waiting for');
   if (screen === 'dialogue')
     return pick(['layout-routine.dialogue'], 'continue the current dialogue');
   if (screen === 'dialogue_choice')
@@ -90,7 +131,26 @@ export function continuousRecovery(
     };
   if (!WORLD_SCREENS.has(screen)) return null;
 
-  if (allowHeal && healthRatio(observation) !== null && healthRatio(observation) <= 0.25) {
+  // Teleporting is impossible mid-fight and walking away gets the party killed: fight first.
+  const threat = observation.layout?.threat;
+  if (threat && available(observation, 'layout-routine.combat'))
+    return actionDecision(
+      'layout-routine.combat',
+      threat === 'attacked'
+        ? 'health is falling, so enemies are attacking: fight back'
+        : 'an enemy is within fighting range: fight it',
+    );
+  if (!threat && downed) {
+    // Combat found downed teammates and no food to revive them: a Statue revives the party.
+    const heal = pick(['layout-routine.heal'], 'revive downed teammates at a Statue of The Seven');
+    if (heal) return heal;
+  }
+  if (
+    !threat &&
+    allowHeal &&
+    healthRatio(observation) !== null &&
+    healthRatio(observation) <= 0.25
+  ) {
     const heal = pick(['layout-routine.heal'], 'restore low health at a Statue of The Seven');
     if (heal) return heal;
   }
@@ -119,6 +179,24 @@ function addTimings(total, timings = {}) {
     if (key !== 'wallMs' && Number.isFinite(value)) total[key] = (total[key] ?? 0) + value;
 }
 
+/**
+ * Bring back the game client continuous play started in when another app (the launcher, or a
+ * second client of the same game whose icon has the same name) is in the foreground.
+ */
+export function returnToGame(observation, gamePackage) {
+  const current = observation.phone?.packageName;
+  if (!gamePackage || !current || current === gamePackage) return null;
+  return {
+    status: 'action',
+    operation: 'OPEN_APP',
+    choice: `open_${gamePackage}`,
+    action: { type: 'open-app', packageName: gamePackage },
+    label: `Continuous-play recovery: return to the game (${gamePackage}) from ${current}`,
+    supervised: true,
+    reason: 'the game left the foreground',
+  };
+}
+
 export async function runContinuousAgent({
   maxSteps = 100,
   cycleSteps = 12,
@@ -140,28 +218,56 @@ export async function runContinuousAgent({
   let lastResult;
   let lastFallback;
   let attemptedHealth;
+  let gamePackage;
+  let lastHealth;
+  let lastRoutineResult;
+  let needRevive = false;
 
   while (steps < maxSteps) {
     let firstDecision = true;
     const policy = {
       decide: async (context) => {
+        // The first recognised game screen fixes which client is being played.
+        if (!gamePackage && context.observation.layout?.screen)
+          gamePackage = context.observation.phone?.packageName;
+        const back = returnToGame(context.observation, gamePackage);
+        if (back) return back;
+        const previous = lastHealth;
+        lastHealth = healthReading(context.observation) ?? lastHealth;
+        const fight = fightReason(context.observation, {
+          previous,
+          lastRoutine: lastRoutineResult,
+        });
+        if (fight) {
+          firstDecision = false;
+          pendingReason = undefined;
+          lastFallback = 'layout-routine.combat';
+          return actionDecision('layout-routine.combat', fight);
+        }
         const ratio = healthRatio(context.observation);
         const healthKey = ratio === null ? null : ratio.toFixed(3);
         const allowHeal = healthKey !== attemptedHealth;
         const skip = new Set(lastFallback ? [lastFallback] : []);
         const recovery =
-          firstDecision || ratio !== null
+          firstDecision || ratio !== null || needRevive || context.observation.layout?.threat
             ? continuousRecovery(context.observation, {
                 reason: pendingReason ?? 'continue playing',
                 index: recoveryIndex,
                 skip,
                 allowHeal,
+                downed: needRevive,
               })
             : null;
         firstDecision = false;
-        if (recovery && (pendingReason || recovery.choice === 'layout-routine.heal')) {
+        const attacked =
+          recovery?.choice === 'layout-routine.combat' &&
+          context.observation.layout?.threat === 'attacked';
+        if (recovery && (pendingReason || attacked || recovery.choice === 'layout-routine.heal')) {
           lastFallback = recovery.choice;
-          if (recovery.choice === 'layout-routine.heal') attemptedHealth = healthKey;
+          if (recovery.choice === 'layout-routine.heal') {
+            attemptedHealth = healthKey;
+            needRevive = false;
+          }
           pendingReason = undefined;
           return recovery;
         }
@@ -187,8 +293,11 @@ export async function runContinuousAgent({
       goal,
       maxSteps: Math.min(cycleSteps, maxSteps - steps),
       onStep: (event) => options.onStep?.({ ...event, step: offset + event.step, cycle: cycles }),
-      onAction: (event) =>
-        options.onAction?.({ ...event, step: offset + event.step, cycle: cycles }),
+      onAction: (event) => {
+        lastRoutineResult = event.routine;
+        if (event.routine?.routine === 'combat' && event.routine.noFood) needRevive = true;
+        return options.onAction?.({ ...event, step: offset + event.step, cycle: cycles });
+      },
       onObservation: (event) =>
         options.onObservation?.({
           ...event,

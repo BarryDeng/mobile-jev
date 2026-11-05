@@ -8,8 +8,11 @@ import {
   enemyArrow,
   enemyBars,
   findEnemies,
+  healthFill,
   hudDistance,
 } from './routines.mjs';
+
+const round2 = (value) => Math.round(value * 100) / 100;
 
 const ANCHORS = {
   'top-left': [0, 0],
@@ -157,7 +160,23 @@ export function validateLayout(layout) {
 }
 
 function validateRoutines(layout, buttonIds) {
-  const { reference, screens = {}, joystick, minimap, enemy, routines = [] } = layout;
+  const { reference, screens = {}, joystick, minimap, enemy, healthBar, routines = [] } = layout;
+  if (healthBar !== undefined) {
+    textBox(healthBar, 'healthBar', reference);
+    if (
+      !Array.isArray(healthBar.rgb) ||
+      healthBar.rgb.length !== 3 ||
+      !healthBar.rgb.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)
+    )
+      throw new Error('healthBar.rgb must be three integers 0–255.');
+    if (!Array.isArray(healthBar.screens) || !healthBar.screens.length)
+      throw new Error('healthBar.screens must list screens.');
+    for (const screen of healthBar.screens)
+      if (!Object.hasOwn(screens, screen))
+        throw new Error(`healthBar.screens has unknown screen ${screen}.`);
+    for (const key of ['tolerance', 'minDrop', 'minVisible'])
+      if (healthBar[key] !== undefined) positive(healthBar[key], `healthBar.${key}`);
+  }
   if (joystick !== undefined) {
     point(joystick, 'joystick', reference);
     positive(joystick.radius, 'joystick.radius');
@@ -241,6 +260,12 @@ function validateRoutines(layout, buttonIds) {
         screenList([screen], `${name}.recover`);
         button(id, `${name}.recover`);
       }
+      if (routine.revive !== undefined) {
+        const { screen, confirm, cancel } = routine.revive;
+        screenList([screen], `${name}.revive.screen`);
+        button(confirm, `${name}.revive.confirm`);
+        button(cancel, `${name}.revive.cancel`);
+      }
       const alive = routine.alivePortrait;
       if (alive !== undefined) {
         positive(alive.w, `${name}.alivePortrait.w`);
@@ -260,6 +285,9 @@ function validateRoutines(layout, buttonIds) {
       }
       if (routine.name !== undefined) textBox(routine.name, `${name}.name`, reference);
       for (const key of ['openMs', 'settleMs']) int(routine, key, name, 0, 5000);
+      for (const key of ['keepMap', 'retrack'])
+        if (routine[key] !== undefined && typeof routine[key] !== 'boolean')
+          throw new Error(`${name}.${key} must be true or false.`);
       continue;
     }
     if (routine.type === 'teleport') {
@@ -328,6 +356,21 @@ function validateRoutines(layout, buttonIds) {
       positive(camera.maxDrag, 'camera.maxDrag');
       if (camera.deadzone !== undefined && !(camera.deadzone >= 0))
         throw new Error('camera.deadzone must be >= 0.');
+      if (
+        camera.curve !== undefined &&
+        !(
+          Array.isArray(camera.curve) &&
+          camera.curve.length >= 2 &&
+          camera.curve.every(
+            (p, i, all) =>
+              Array.isArray(p) &&
+              p.length === 2 &&
+              p.every((v) => Number.isFinite(v) && v >= 0) &&
+              (i === 0 || (p[0] > all[i - 1][0] && p[1] > all[i - 1][1])),
+          )
+        )
+      )
+        throw new Error('camera.curve must be [pixels, degrees] pairs, both increasing.');
     };
     if (routine.type === 'approach') {
       camera();
@@ -368,6 +411,25 @@ function validateRoutines(layout, buttonIds) {
           `${name}.marker needs rgb+tolerance or min+max to recognise the marker colour.`,
         );
       int(marker, 'tolerance', `${name}.marker`, 0, 255);
+      if (marker.colors !== undefined) {
+        if (!Array.isArray(marker.colors))
+          throw new Error(`${name}.marker.colors must be a list of { rgb, tolerance }.`);
+        marker.colors.forEach((color, i) => {
+          if (typeof color !== 'object' || color === null)
+            throw new Error(`${name}.marker.colors[${i}] must be { rgb, tolerance }.`);
+          rgbTriplet(color.rgb, `colors[${i}].rgb`);
+          if (color.rgb === undefined)
+            throw new Error(`${name}.marker.colors[${i}].rgb is required.`);
+          int(color, 'tolerance', `${name}.marker.colors[${i}]`, 0, 255);
+          if (color.hud !== undefined)
+            textBox(color.hud, `${name}.marker.colors[${i}].hud`, reference);
+          if (
+            color.hudShare !== undefined &&
+            !(typeof color.hudShare === 'number' && color.hudShare > 0 && color.hudShare <= 1)
+          )
+            throw new Error(`${name}.marker.colors[${i}].hudShare must be in (0, 1].`);
+        });
+      }
       if (marker.area !== undefined) {
         const { area } = marker;
         if (typeof area !== 'object' || area === null)
@@ -399,7 +461,12 @@ function validateRoutines(layout, buttonIds) {
         throw new Error(`${name}.areaArrive must be in (0, 1].`);
       for (const key of ['hopMs', 'segmentMs', 'dragSettleMs', 'recoverMs', 'detourMs'])
         int(routine, key, name, 0, 5000);
+      int(routine, 'areaWaitMs', name, 0, 30_000);
+      int(routine, 'areaCircleMs', name, 0, 60_000);
+      int(routine, 'areaHopMs', name, 200, 5000);
+      int(routine, 'areaLookMs', name, 0, 5000);
       int(routine, 'climbMs', name, 500, 60_000);
+      int(routine, 'climbOffDeg', name, 10, 180);
       if (
         routine.climbProgress !== undefined &&
         !(routine.climbProgress > 0 && routine.climbProgress <= 1)
@@ -407,12 +474,23 @@ function validateRoutines(layout, buttonIds) {
         throw new Error(`${name}.climbProgress must be in (0, 1].`);
       for (const key of ['recoverAfter', 'stuckLimit']) int(routine, key, name, 1, 10);
       int(routine, 'minFrames', name, 1, 60);
+      int(routine, 'aimTries', name, 0, 5);
+      int(routine, 'aimDeg', name, 1, 45);
+      if (routine.steer !== undefined && typeof routine.steer !== 'boolean')
+        throw new Error(`${name}.steer must be true or false.`);
       if (
         routine.progressText !== undefined &&
         !Object.values(screens).some((s) => s.texts?.some((t) => t.id === routine.progressText))
       )
         throw new Error(`${name}.progressText must name a screen text region.`);
+      if (
+        routine.aboveText !== undefined &&
+        (typeof routine.aboveText !== 'string' || !routine.aboveText || !routine.progressText)
+      )
+        throw new Error(`${name}.aboveText must be a non-empty string used with progressText.`);
       int(routine, 'progressMetres', name, 1, 1000);
+      int(routine, 'sidestepMs', name, 100, 10_000);
+      int(routine, 'sidestepTries', name, 1, 10);
       if (routine.shift !== undefined) {
         const { shift } = routine;
         if (typeof shift !== 'object' || shift === null)
@@ -506,6 +584,7 @@ export function resolveCamera(camera, screen, reference) {
     degreesPerPixel: camera.degreesPerPixel / scale,
     maxDrag: camera.maxDrag * scale,
     deadzone: (camera.deadzone ?? 0) * scale,
+    ...(camera.curve && { curve: camera.curve.map(([px, deg]) => [px * scale, deg]) }),
   };
 }
 
@@ -786,16 +865,19 @@ export function layoutObservation(
   base,
   image,
   layout,
-  { last, texts = {}, ocr, routines = false, enemyLabels = [], memory, blocked } = {},
+  { last, texts = {}, ocr, routines = false, enemyLabels = [], memory, blocked, farQuest } = {},
 ) {
   const { screen: detected, results } = detectScreen(image, base.screen, layout);
   let description = detected ? layout.screens[detected].description || detected : undefined;
+  let threat;
   if (detected && layout.enemy?.screens?.includes(detected)) {
     const enemy = resolveEnemy(layout.enemy, base.screen, layout.reference);
     const bars = enemyBars(image, enemy.bounds, base.screen, enemy, enemy.scale);
     const arrow = !bars.length && enemyArrow(image, base.screen, enemy, enemy.scale);
     // Bars flicker in width, so a code-verified `near` from the last approach wins over this frame.
     const reached = last?.routine?.status === 'near';
+    if (bars.length && (reached || bars[0].w >= enemy.nearWidth * enemy.scale))
+      threat = 'enemy_near';
     description = `${description} ${describeEnemies(bars, enemy, base.screen, enemyLabels, arrow, reached)}`;
     // Code-verified search outcome: without it Jev repeats a search that already turned a full circle.
     if (
@@ -809,6 +891,12 @@ export function layoutObservation(
   }
   const lastRoutine =
     last?.routine && layout.routines?.find((routine) => routine.id === last.routine.routine);
+  if (detected && last?.routine?.status === 'attacked' && last.routine.health) {
+    const { from, to } = last.routine.health;
+    const pct = (value) => `${Math.round(value * 100)}%`;
+    threat = 'attacked';
+    description = `${description} The last ${lastRoutine?.label ?? last.routine.routine} stopped because code measured the active character's health falling (${pct(from)} → ${pct(to)}): enemies are attacking nearby, possibly out of view. Fight back now with combat; its attacks turn towards the nearest enemy.`;
+  }
   if (detected && lastRoutine?.type === 'teleport') {
     const { status, target } = last.routine;
     const healing = lastRoutine.id === 'heal';
@@ -827,20 +915,39 @@ export function layoutObservation(
           teleported: `The last teleport was code-verified: it arrived at ${target} and the minimap changed.`,
           unverified: `The last teleport tapped 传送 at ${target} and the world came back, but the minimap did not change; it may not have moved.`,
           no_quest:
-            'The last teleport found no tracked quest on the world map; track a quest first, or press BACK.',
+            'The last teleport found no tracked quest on the world map; it may be in another region. Press BACK, then use Track quest 追踪任务: it tracks the quest again so the game opens the map on it, and teleport from there.',
           no_waypoint:
             'The last teleport found no unlocked teleport waypoint near the tracked quest; press BACK and walk instead.',
           no_teleport_button:
             'The last teleport could not open a teleport panel at the waypoint nearest the quest; press BACK and walk instead.',
           quest_near: `The last teleport did not teleport: code found the tracked quest close to you (${last.routine.questMetres !== undefined ? `${last.routine.questMetres}m away` : 'near you on the world map'}). ${last.routine.closed ? 'Walk to it with navigate.' : 'Press BACK, then walk to it with navigate.'}`,
         }[status];
-    if (sentence) description = `${description} ${sentence}`;
+    // Walking is blocked: a teleport panel that did not open is retried at the next nearest point.
+    const retry =
+      !healing &&
+      blocked &&
+      status === 'no_teleport_button' &&
+      `The last teleport could not open a teleport panel at ${last.routine.skipped ? 'that' : 'the nearest'} waypoint. Walking to the quest is blocked, so use ${lastRoutine.label} again: code tries the next nearest teleport point.`;
+    if (retry || sentence) description = `${description} ${retry || sentence}`;
   }
+  // A teleport that found no quest on the map: the quest is in another region. The hint must
+  // outlast the BACK that closes the map, and teleport is withheld until track_quest re-tracks it.
+  if (last?.routine && lastRoutine && last.routine.status !== 'started') {
+    if (lastRoutine.type === 'track_quest') farQuest = undefined;
+    else if (lastRoutine.type === 'teleport' && lastRoutine.id !== 'heal')
+      farQuest = last.routine.status === 'no_quest' || undefined;
+  }
+  const tracker = layout.routines?.find((r) => r.type === 'track_quest');
+  // Withheld on every screen: Jev otherwise reopens the map by hand and teleports again.
+  const withhold = tracker && farQuest && detected && lastRoutine?.type !== 'teleport';
+  if (withhold)
+    description = `${description} The last teleport found no tracked quest on the world map: it is in another region, so teleport is unavailable until the quest is tracked again. ${tracker.screens.includes(detected) ? `Use ${tracker.label} now` : `Press BACK, then use ${tracker.label}`}: it tracks the quest again so the game opens the map on it, then teleport from there.`;
   if (detected && lastRoutine?.type === 'track_quest') {
     const { status, quest } = last.routine;
     const named = quest ? ` (${quest})` : '';
     const sentence = {
       tracked: `The last quest tracking was code-verified: it tracked the selected quest${named} and the HUD now shows its distance.`,
+      tracked_far: `The last quest tracking ${last.routine.retracked ? 'tracked the quest again' : 'tracked the selected quest'}${named}; it is far away, and the world map is now open on it. Teleport there now.`,
       already_tracked: `The last quest tracking found a quest already tracked${named}; nothing was changed.`,
       unverified: `The last quest tracking tapped 追踪目标${named}, but the HUD shows no quest distance yet.`,
       no_quest_log: 'The last quest tracking could not open the quest log 任务.',
@@ -895,22 +1002,59 @@ export function layoutObservation(
   // Code-measured walking progress: a navigate that timed out or got stuck without the quest
   // distance shrinking means the path is blocked (water, cliffs, roofs), which Jev cannot see.
   const navigate = (layout.routines ?? []).find((r) => r.type === 'navigate' && r.progressText);
+  // Sidesteps used up while walking is blocked: navigate is withheld so Jev teleports.
+  let walkBlocked = false;
   if (detected && navigate) {
     const read = accepted.get(navigate.progressText);
     const metres =
       read === undefined ? undefined : Number(hudDistance(read).match(/(\d+)\s*m/i)?.[1]);
-    if (lastRoutine?.type === 'navigate' && last.routine.fromMetres !== undefined) {
+    if (lastRoutine?.type === 'teleport') {
+      // Away from the blocked spot: walk again. With no teleport point left, walking is all there is.
+      const { status, tried } = last.routine;
+      if (['teleported', 'unverified', 'no_waypoint'].includes(status)) blocked = undefined;
+      // No panel opened at the nearest points: the next teleport skips the ones already tried.
+      else if (
+        blocked &&
+        status === 'no_teleport_button' &&
+        lastRoutine.id !== 'heal' &&
+        blocked.source !== last.routine
+      )
+        blocked = Object.defineProperty(
+          { ...blocked, skip: Math.max((blocked.skip ?? 0) + 1, tried ?? 0) },
+          'source',
+          { value: last.routine },
+        );
+    } else if (lastRoutine?.type === 'navigate') {
       const { status, fromMetres } = last.routine;
-      if (status === 'arrived') blocked = undefined;
-      else if (Number.isFinite(metres))
-        blocked =
-          (status === 'timeout' || status === 'stuck') &&
-          metres > fromMetres - (navigate.progressMetres ?? 5)
-            ? { from: fromMetres, to: metres }
-            : undefined;
+      const failed = status === 'timeout' || status === 'stuck';
+      const count = (blocked?.count ?? 0) + 1;
+      const mark = (value) => Object.defineProperty(value, 'source', { value: last.routine });
+      // The same routine result is seen by every observation until the next action.
+      if (blocked?.source === last.routine) {
+        // Already counted.
+      } else if (status === 'arrived') blocked = undefined;
+      else if (fromMetres !== undefined && Number.isFinite(metres)) {
+        const stalled = failed && metres > fromMetres - (navigate.progressMetres ?? 5);
+        blocked = stalled ? mark({ ...blocked, from: fromMetres, to: metres, count }) : undefined;
+      } else if (failed) {
+        // The HUD distance is unreadable (often while climbing or swimming): a failed walk shows
+        // no measured progress, so it counts as blocked too.
+        const from = fromMetres ?? blocked?.from;
+        const to = Number.isFinite(metres) ? metres : blocked?.to;
+        blocked = mark({ ...blocked, from, to, count });
+      }
     }
-    if (blocked)
-      description = `${description} Code measured that the last walk to the quest made no progress (${blocked.from}m → ${blocked.to}m): the way is blocked, so teleport instead of navigating again.`;
+    const shown = (m) => (Number.isFinite(m) ? `${m}m` : 'unreadable');
+    const tries = navigate.sidestepMs ? (navigate.sidestepTries ?? 2) : 0;
+    if (blocked && blocked.count <= tries)
+      description = `${description} Code measured that the last walk to the quest made no progress (${shown(blocked.from)} → ${shown(blocked.to)}): something is in the way. Use ${navigate.label} again: code first walks to the ${blocked.count % 2 ? 'left' : 'right'} for a moment to get around it, then heads for the marker again.`;
+    else if (blocked) {
+      const teleport = (layout.routines ?? []).find(
+        (r) => r.type === 'teleport' && r.id !== 'heal',
+      );
+      walkBlocked = Boolean(teleport && !withhold);
+      description = `${description} Code measured that the last walk to the quest made no progress (${shown(blocked.from)} → ${shown(blocked.to)}): the way is blocked, so teleport instead of navigating again.${walkBlocked ? ` ${navigate.label} is unavailable until a teleport moves you; use ${teleport.label}${blocked.skip ? ': code skips the teleport points already tried' : ''}.` : ''}`;
+    }
   }
   const elements = [
     ...base.elements,
@@ -933,14 +1077,17 @@ export function layoutObservation(
           clickable: true,
         }),
     ),
-    ...(routines ? layoutRoutines(layout, base.screen, detected) : []).map(({ routine, bounds }) =>
-      virtualElement(`layout-routine.${routine.id}`, {
-        label: routine.description ? `${routine.label}: ${routine.description}` : routine.label,
-        resourceId: `layout-routine:${routine.id}`,
-        bounds,
-        clickable: true,
-      }),
-    ),
+    ...(routines ? layoutRoutines(layout, base.screen, detected) : [])
+      .filter(({ routine }) => !(withhold && routine.type === 'teleport' && routine.id !== 'heal'))
+      .filter(({ routine }) => !(walkBlocked && routine.type === 'navigate'))
+      .map(({ routine, bounds }) =>
+        virtualElement(`layout-routine.${routine.id}`, {
+          label: routine.description ? `${routine.label}: ${routine.description}` : routine.label,
+          resourceId: `layout-routine:${routine.id}`,
+          bounds,
+          clickable: true,
+        }),
+      ),
   ];
   const visual = {
     profile: layout.name,
@@ -974,6 +1121,8 @@ export function layoutObservation(
         .digest('hex'),
       ...(previousAction ? { previousAction } : {}),
       ...(blocked ? { blocked } : {}),
+      ...(farQuest ? { farQuest } : {}),
+      ...(threat ? { threat } : {}),
       ...(ocr ? { ocr } : {}),
     },
     fingerprint: createHash('sha256').update(JSON.stringify(content)).digest('hex'),
@@ -1011,6 +1160,7 @@ export function withLayout(device, layout, { recognizer } = {}) {
   const baseAct = device.act?.bind(device);
   let last;
   let blocked;
+  let farQuest;
   const memory = new Map();
   // Devices may offer faster decoded frames (ADB_CAPTURE=raw); otherwise decode the PNG.
   const capture = async () => {
@@ -1022,11 +1172,18 @@ export function withLayout(device, layout, { recognizer } = {}) {
     return Object.assign(image, { capturedAt });
   };
   // Keep the pixels with the observation for frame recording; non-enumerable stays out of traces.
-  const withFrame = (observation, image) =>
-    Object.defineProperty(observation, 'frame', {
+  const withFrame = (observation, image) => {
+    device.debug?.frame({
+      image,
+      capturedAt: image.capturedAt,
+      screen: observation.layout?.screen ?? null,
+      source: 'observe',
+    });
+    return Object.defineProperty(observation, 'frame', {
       value: { image, capturedAt: image.capturedAt },
       enumerable: false,
     });
+  };
   const readText =
     recognizer && (async (image, box) => (await recognizer.recognize(image, box))?.text ?? '');
   const observeLayout = async (base, image) => {
@@ -1062,9 +1219,11 @@ export function withLayout(device, layout, { recognizer } = {}) {
       enemyLabels,
       memory,
       blocked,
+      farQuest,
       routines: typeof device.touch === 'function',
     });
     blocked = observation.layout.blocked;
+    farQuest = observation.layout.farQuest;
     return observation;
   };
   const observeOnce = async () => {
@@ -1123,6 +1282,21 @@ export function withLayout(device, layout, { recognizer } = {}) {
             duration: hold,
           });
         } else result = await baseAct(action, options);
+        const tapped =
+          device.debug &&
+          action?.type === 'tap-element' &&
+          options?.expected?.elements?.find((e) => e.id === action.elementId);
+        if (tapped?.bounds) {
+          const { left, top, right, bottom } = tapped.bounds;
+          device.debug.event({
+            type: 'touch',
+            phase: 'tap',
+            routine: 'jev',
+            x: Math.floor((left + right) / 2),
+            y: Math.floor((top + bottom) / 2),
+            label: tapped.text || tapped.label || action.elementId,
+          });
+        }
         last = screen ? { action, screen } : undefined;
         return result;
       } catch (error) {
@@ -1139,17 +1313,70 @@ export function withLayout(device, layout, { recognizer } = {}) {
       throw new Error('Routine is not available.');
     const dims = current.screen;
     last = { action, screen, routine: { routine: routine.id, status: 'started' } };
+    const healthBar = layout.healthBar && {
+      ...layout.healthBar,
+      bounds: resolveRect(layout.healthBar, dims, layout.reference),
+    };
+    // Last visible HP bar fill in this routine: a drop of `minDrop` between frames is damage.
+    let health = null;
     const progress =
       routine.type === 'navigate' &&
       routine.progressText &&
       options.expected.elements?.find((e) => e.id === `layout-text.${routine.progressText}`)?.text;
     const fromMetres = progress ? Number(hudDistance(progress).match(/(\d+)\s*m/i)?.[1]) : NaN;
+    // The HUD says the quest is above (原神: 高处): climbing is the way there, not an obstacle.
+    const above = Boolean(progress && routine.aboveText && progress.includes(routine.aboveText));
     // A walk measured as blocked lets teleport skip its "quest is close, walk instead" checks.
-    const force = routine.type === 'teleport' && Boolean(blocked);
-    if (routine.type === 'teleport') blocked = undefined;
+    // A teleport that found no quest on the map: track_quest re-tracks even with a HUD distance.
+    const force =
+      (routine.type === 'teleport' && Boolean(blocked)) ||
+      (routine.type === 'track_quest' && Boolean(farQuest));
+    // A walk measured as blocked: the next navigate first sidesteps, alternating left and right.
+    const sidestep =
+      routine.type === 'navigate' &&
+      routine.sidestepMs &&
+      blocked &&
+      blocked.count <= (routine.sidestepTries ?? 2)
+        ? blocked.count % 2
+          ? 'left'
+          : 'right'
+        : undefined;
+    const skip = routine.type === 'teleport' && blocked ? (blocked.skip ?? 0) : 0;
     const joystick = layout.joystick && resolvePoint(layout.joystick, dims, layout.reference);
+    // Debug viewers see which button each routine touch pressed (combat: skill, attack, burst...).
+    const debug = device.debug;
+    let pressed;
+    if (debug) {
+      pressed = new Map();
+      for (const button of layout.buttons) {
+        const b = resolveRect(button, dims, layout.reference);
+        if (!b) continue;
+        const key = `${Math.floor((b.left + b.right) / 2)},${Math.floor((b.top + b.bottom) / 2)}`;
+        if (!pressed.has(key)) pressed.set(key, button);
+      }
+      debug.event({ type: 'routine_start', routine: routine.id, kind: routine.type });
+    }
+    // Every touch phase goes out with its screen point, so viewers can draw presses and drags.
+    let gesture;
+    const touch = (event, px, py) => {
+      if (debug) {
+        if (event === 'down') {
+          const button = pressed.get(`${px},${py}`);
+          const nearStick =
+            joystick && Math.hypot(px - joystick.x, py - joystick.y) <= layout.joystick.radius * 2;
+          gesture = button
+            ? { button: button.id, label: button.label }
+            : { target: nearStick ? 'joystick' : 'drag' };
+        }
+        debug.event({ type: 'touch', phase: event, routine: routine.id, x: px, y: py, ...gesture });
+      }
+      return device.touch(event, px, py);
+    };
     const result = await ROUTINES[routine.type]({
       routine,
+      sidestep,
+      above,
+      ...(skip ? { skip } : {}),
       screen: dims,
       joystick: joystick && {
         x: Math.round(joystick.x),
@@ -1172,9 +1399,36 @@ export function withLayout(device, layout, { recognizer } = {}) {
       rect: (entry) => resolveRect(entry, dims, layout.reference),
       frame: async () => {
         const image = await capture();
-        return { image, screen: detectScreen(image, dims, layout).screen };
+        const detected = detectScreen(image, dims, layout).screen;
+        if (!healthBar) {
+          debug?.frame({
+            image,
+            capturedAt: image.capturedAt,
+            screen: detected ?? 'unknown',
+            source: routine.id,
+          });
+          return { image, screen: detected };
+        }
+        const fill = healthBar.screens.includes(detected)
+          ? healthFill(image, dims, healthBar)
+          : null;
+        const frame = { image, screen: detected, health: fill };
+        if (fill !== null) {
+          if (health !== null && health - fill >= (healthBar.minDrop ?? 0.03))
+            frame.damaged = { from: round2(health), to: round2(fill) };
+          health = fill;
+        }
+        debug?.frame({
+          image,
+          capturedAt: image.capturedAt,
+          screen: detected ?? 'unknown',
+          source: routine.id,
+          health: fill === null ? null : round2(fill),
+          ...(frame.damaged ? { damaged: frame.damaged } : {}),
+        });
+        return frame;
       },
-      touch: (event, px, py) => device.touch(event, px, py),
+      touch,
       back: baseAct && (() => baseAct({ type: 'global', name: 'back' })),
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => performance.now(),
@@ -1186,6 +1440,7 @@ export function withLayout(device, layout, { recognizer } = {}) {
       screen,
       routine: Number.isFinite(fromMetres) ? { ...result, fromMetres } : result,
     };
+    debug?.event({ type: 'routine_end', ...last.routine });
     return { routine: last.routine };
   };
   if (baseListApps && layout.appLabel)

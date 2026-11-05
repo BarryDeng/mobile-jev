@@ -17,6 +17,7 @@ import {
   mapQuestMarkers,
   mapWaypoints,
   hudDistance,
+  healthFill,
 } from './routines.mjs';
 
 const SCREEN = { width: 40, height: 20 };
@@ -485,13 +486,48 @@ test('combat skips downed teammates and closes the revive dialog', async () => {
   assert.equal(touches.filter(([e, x, y]) => e === 'down' && x === 9 && y === 9).length, 1);
 });
 
+test('combat revives a downed teammate with food and reports when food runs out', async () => {
+  const alivePortrait = { dx: 0, dy: 0, w: 6, h: 6, minSaturation: 70, minPixels: 4 };
+  const image = flat(0);
+  for (let y = 2; y < 8; y++)
+    for (let x = 27; x < 33; x++) image.pixels.set([220, 40, 40], (y * 40 + x) * 3);
+  const revive = { screen: 'revive', confirm: 'ok', cancel: 'cancel' };
+  const { ctx, touches } = script([['world', 0]], {
+    ...COMBAT,
+    alivePortrait,
+    revive,
+    recover: { revive: 'cancel' },
+    maxMs: 1,
+  });
+  const centers = {
+    t1: { x: 5, y: 5 },
+    t2: { x: 15, y: 5 },
+    t3: { x: 30, y: 5 },
+    ok: { x: 11, y: 9 },
+    cancel: { x: 9, y: 9 },
+  };
+  ctx.buttonCenter = (id) => centers[id] ?? { x: 1, y: 1 };
+  // t1 opens the dialog and food revives it; t2 opens it, confirm leaves it open (no food).
+  const screens = ['world', 'revive', 'world', 'revive', 'revive', 'world'];
+  ctx.frame = async () => ({ screen: screens.shift() ?? 'world', image });
+  const result = await combat(ctx);
+  assert.equal(result.revived, 1);
+  assert.equal(result.noFood, true);
+  assert.equal(result.reviveTries, 2);
+  assert.equal(result.switches, 1);
+  const downs = (c) => touches.filter(([e, x, y]) => e === 'down' && x === c.x && y === c.y);
+  assert.equal(downs(centers.ok).length, 2);
+  assert.equal(downs(centers.cancel).length, 1);
+  assert.equal(downs(centers.t3).length, 1);
+});
+
 const MAP = { left: 10, top: 10, right: 90, bottom: 90 };
 const MAP_SCREEN = { width: 120, height: 100 };
 const YELLOW = { rgb: [251, 232, 2], tolerance: 30 };
 // A minimap with a brighter 85° view cone at `cone` degrees, an optional yellow marker and
 // corners whose shade changes with `tick` so consecutive frames differ like a moving map.
 // `ground` [x, y] draws textured terrain seen from that position, so the map scrolls with it.
-function mapImage({ cone, marker, ring, diamond, ground, tick = 0 }) {
+function mapImage({ cone, marker, ring, diamond, ground, hud, tick = 0 }) {
   const { width, height } = MAP_SCREEN;
   const pixels = Buffer.alloc(width * height * 3);
   for (let y = 0; y < height; y++)
@@ -511,8 +547,10 @@ function mapImage({ cone, marker, ring, diamond, ground, tick = 0 }) {
       if (marker) {
         const mx = 50 + marker.r * 40 * Math.cos((marker.deg * Math.PI) / 180),
           my = 50 - marker.r * 40 * Math.sin((marker.deg * Math.PI) / 180);
-        if (Math.hypot(x - mx, y - my) <= 3) rgb = [251, 232, 2];
+        if (Math.hypot(x - mx, y - my) <= 3) rgb = marker.rgb ?? [251, 232, 2];
       }
+      // The tracked quest's HUD icon (outside the minimap), in `hud` colour.
+      if (hud && x >= 100 && x < 110 && y >= 90 && y < 100) rgb = hud;
       // A quest-area outline (radius `ring.radius` half-widths) with a gap from `ring.gap` deg.
       if (ring) {
         const rx = 50 + ring.r * 40 * Math.cos((ring.deg * Math.PI) / 180),
@@ -563,7 +601,11 @@ function navHarness(frames, routine = {}) {
       clock += 200;
       const f = frames[Math.min(i, frames.length - 1)];
       i++;
-      return { screen: f.screen ?? 'world', image: mapImage({ ...f, tick: f.tick ?? i }) };
+      return {
+        screen: f.screen ?? 'world',
+        image: mapImage({ ...f, tick: f.tick ?? i }),
+        damaged: f.damaged,
+      };
     },
     touch: async (event, x, y) => touches.push([event, x, y]),
     sleep: async (ms) => (clock += ms),
@@ -589,6 +631,46 @@ test('navigate turns the camera toward the marker, runs, and stops on arrival', 
   assert.ok(touches.some(([event, x, y]) => event === 'move' && x === 20 && y === 70));
   assert.equal(held(touches), 0);
   assert.equal(result.moved, true);
+});
+
+test('navigate first sidesteps when the last walk was blocked', async () => {
+  const { ctx, touches } = navHarness([{ cone: 0, marker: { deg: 0, r: 0.05 } }], {
+    sidestepMs: 1000,
+  });
+  ctx.sidestep = 'left';
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.sidestep], ['arrived', 'left']);
+  assert.deepEqual(touches.slice(0, 3), [
+    ['down', 20, 80],
+    ['move', 10, 80],
+    ['up', 10, 80],
+  ]);
+  const right = navHarness([{ cone: 0, marker: { deg: 0, r: 0.05 } }], { sidestepMs: 1000 });
+  right.ctx.sidestep = 'right';
+  await navigate(right.ctx);
+  assert.deepEqual(right.touches[1], ['move', 30, 80]);
+});
+
+test('navigate follows a purple quest marker only while the HUD quest icon is purple', async () => {
+  const PURPLE = [182, 155, 232];
+  const marker = {
+    ...YELLOW,
+    colors: [{ rgb: PURPLE, tolerance: 30, hud: { x: 105, y: 95, w: 10, h: 10 } }],
+  };
+  const purple = { deg: 0, r: 0.02, rgb: PURPLE };
+  const rect = (e) => ({
+    left: e.x - e.w / 2,
+    top: e.y - e.h / 2,
+    right: e.x + e.w / 2,
+    bottom: e.y + e.h / 2,
+  });
+  const tracked = navHarness([{ cone: 0, marker: purple, hud: PURPLE }], { marker });
+  tracked.ctx.rect = rect;
+  assert.equal((await navigate(tracked.ctx)).status, 'arrived');
+  // Untracked purple quests also show on the minimap: ignored while the HUD icon is not purple.
+  const other = navHarness([{ cone: 0, marker: purple, hud: [90, 140, 230] }], { marker });
+  other.ctx.rect = rect;
+  assert.equal((await navigate(other.ctx)).status, 'no_marker');
 });
 
 test('navigate reports a missing marker, a hidden cone and stop screens', async () => {
@@ -718,6 +800,29 @@ test('navigate runs into a quest area and arrives near its centre', async () => 
   assert.ok(!touches.some(([event, x, y]) => event === 'move' && x === 20 && y === 75));
 });
 
+test('navigate waits inside a quest area, then walks circles in it until something changes', async () => {
+  const inside = { cone: 45, ring: { deg: 45, r: 0.2, radius: 0.5, gap: 200 } };
+  const options = {
+    marker: { ...YELLOW, area: {} },
+    areaWaitMs: 2000,
+    areaCircleMs: 4000,
+    areaHopMs: 1000,
+  };
+  const { ctx, touches } = navHarness([inside], options);
+  const searched = await navigate(ctx);
+  assert.equal(searched.status, 'searched');
+  assert.ok(searched.circles >= 2);
+  // Along the ring's tangent: the centre is straight ahead, so the stick points 90° right.
+  assert.ok(touches.some(([event, x, y]) => event === 'move' && x === 30 && y === 80));
+  assert.equal(held(touches), 0);
+  // A new screen or the ring going away ends the search as soon as it is seen.
+  for (const later of [{ ...inside, screen: 'talk' }, { cone: 45 }]) {
+    const frames = [inside, inside, inside, inside, later];
+    const result = await navigate(navHarness(frames, options).ctx);
+    assert.deepEqual([result.status, result.area], ['arrived', 'changed']);
+  }
+});
+
 test('navigate keeps re-aiming for minFrames when frames are slow, within three times maxMs', async () => {
   for (const [minFrames, frames] of [
     [undefined, 3],
@@ -806,6 +911,23 @@ test('navigate steers by how the minimap scrolls when the cone is faint', async 
   assert.deepEqual([blocked.status, blocked.stuck, blocked.drags], ['stuck', 2, 1]);
 });
 
+test('navigate stops trusting a cone that does not follow camera turns', async () => {
+  // A pale town map: the brightest window stays at 0° however the camera turns. After two such
+  // turns the heading comes from the map scroll (north here), so no further turn is needed.
+  const frames = [
+    { cone: 0, marker: { deg: 90, r: 1.2 } },
+    { cone: 0, marker: { deg: 90, r: 1.2 } },
+    { cone: 0, marker: { deg: 90, r: 1.2 } },
+    { marker: { deg: 90, r: 1.2 }, ground: [0, 0] },
+    { marker: { deg: 90, r: 1.2 }, ground: [0, -6] },
+    { marker: { deg: 90, r: 0.3 }, ground: [0, -10] },
+  ];
+  const { ctx } = navHarness(frames, { shift: {}, aimTries: 2, arriveRadius: 0.35 });
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.coneFrozen, result.shift], ['arrived', true, 1]);
+  assert.equal(result.drags, 2);
+});
+
 test('navigate drops from a long climb that does not bring the marker closer', async () => {
   // The view keeps changing (a real climb), but past climbMs the marker is no nearer: a wall.
   const frames = (r) => [
@@ -823,6 +945,62 @@ test('navigate drops from a long climb that does not bring the marker closer', a
   // A climb that does bring the marker closer goes on.
   const closer = await navigate(navHarness(frames([1.0, 0.8]), options).ctx);
   assert.deepEqual([closer.status, closer.recoveries], ['arrived', 0]);
+  // A quest the HUD says is above (高处): climbing on is the way up, not a wall to drop from.
+  const up = navHarness(frames([1.2, 1.2]), options);
+  up.ctx.above = true;
+  const climbed = await navigate(up.ctx);
+  assert.deepEqual([climbed.status, climbed.recoveries], ['arrived', 0]);
+});
+
+test('navigate re-reads the cone after a turn and corrects until it faces the marker', async () => {
+  // The first drag undershoots (0° → 60° for a 90° error); a second turn closes the gap.
+  const { ctx } = navHarness(
+    [
+      { cone: 0, marker: { deg: 90, r: 1.2 } },
+      { cone: 60, marker: { deg: 90, r: 1.2 } },
+      { cone: 90, marker: { deg: 90, r: 1.2 } },
+      { cone: 90, marker: { deg: 90, r: 0.05 } },
+    ],
+    { aimTries: 3, aimDeg: 5 },
+  );
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.drags, result.aims], ['arrived', 2, 1]);
+});
+
+test('navigate drops off a climb heading well away from the marker and faces it again', async () => {
+  const frames = [
+    { cone: 0, marker: { deg: 90, r: 1.2 }, screen: 'climbing' },
+    { cone: 90, marker: { deg: 90, r: 1.1 }, screen: 'world' },
+    { cone: 90, marker: { deg: 90, r: 0.05 }, screen: 'world' },
+  ];
+  const options = { recover: { climbing: 'attack' }, climbOffDeg: 60 };
+  const { ctx, touches } = navHarness(frames, options);
+  const result = await navigate(ctx);
+  assert.deepEqual([result.status, result.offClimbs, result.drags], ['arrived', 1, 1]);
+  const drag = touches.findIndex(([event, x, y]) => event === 'down' && x === 80 && y === 40);
+  const up = touches.slice(drag).find(([event]) => event === 'up');
+  assert.ok(up[1] < 80 - 200 && up[1] > 80 - 240, `drag ended at ${up[1]}`);
+  assert.equal(held(touches), 0);
+  // Climbing roughly toward the marker carries on.
+  const along = frames.map((f, i) => (i === 0 ? { ...f, cone: 60 } : f));
+  const kept = await navigate(navHarness(along, options).ctx);
+  assert.equal(kept.offClimbs, undefined);
+});
+
+test('navigate steers the joystick by the error left after aiming', async () => {
+  const frames = [
+    { cone: 0, marker: { deg: 8, r: 1.2 } },
+    { cone: 0, marker: { deg: 8, r: 0.05 } },
+  ];
+  const moves = async (options) => {
+    const { ctx, touches } = navHarness(frames, options);
+    const result = await navigate(ctx);
+    assert.equal(result.status, 'arrived');
+    return touches.filter(([event, x]) => event === 'move' && x < 40).map(([, x, y]) => [x, y]);
+  };
+  // 8° to the left of the heading is under turnDeg, so only the joystick tilts toward it.
+  assert.deepEqual((await moves({ steer: true }))[0], [19, 70]);
+  assert.deepEqual((await moves({}))[0], [20, 70]);
 });
 
 // A 200x100 screen: grey ground, a minimap (0-20, 0-20) whose shade follows `tick`, and red
@@ -911,7 +1089,11 @@ function approachHarness(frames, routine = {}) {
       clock += 200;
       const f = frames[Math.min(i, frames.length - 1)];
       i++;
-      return { screen: f.screen ?? 'world', image: field({ tick: f.tick ?? i, ...f }) };
+      return {
+        screen: f.screen ?? 'world',
+        image: field({ tick: f.tick ?? i, ...f }),
+        damaged: f.damaged,
+      };
     },
     touch: async (event, x, y) => touches.push([event, x, y]),
     sleep: async (ms) => (clock += ms),
@@ -979,6 +1161,93 @@ test('hop explore stops when a new enemy bar appears, not for one already visibl
   assert.deepEqual([result.status, result.hops, result.enemies], ['enemy', 2, 1]);
   result = await run([{ bars: [bar] }, { bars: [bar] }, {}, { bars: [bar] }]);
   assert.deepEqual([result.status, result.hops], ['enemy', 3]);
+});
+
+test('healthFill reads the HP bar fill and returns null when the bar is hidden', () => {
+  const screen = { width: 100, height: 20 };
+  const image = (fill, empty = [95, 54, 60]) => {
+    const pixels = Buffer.alloc(100 * 20 * 3, 120);
+    for (let y = 8; y < 12; y++)
+      for (let x = 10; x < 90; x++)
+        pixels.set(x < 10 + fill * 80 ? [150, 215, 34] : empty, (y * 100 + x) * 3);
+    return { width: 100, height: 20, channels: 3, pixels };
+  };
+  const bar = {
+    bounds: { left: 10, top: 8, right: 90, bottom: 12 },
+    rgb: [150, 215, 34],
+    tolerance: 40,
+  };
+  assert.ok(Math.abs(healthFill(image(1), screen, bar) - 1) <= 0.03);
+  assert.ok(Math.abs(healthFill(image(0.4), screen, bar) - 0.4) <= 0.03);
+  assert.equal(healthFill(image(0), screen, bar), 0);
+  // Grey HUD-less frame (a skill animation or menu): unknown, not zero health.
+  assert.equal(healthFill(image(0, [120, 120, 120]), screen, bar), null);
+});
+
+const HIT = { from: 0.9, to: 0.8 };
+
+test('walking routines with damageStop stop when the active character loses health', async () => {
+  const bar = { x: 100, y: 40, w: 20, h: 4 };
+  const hop = (frames, extra = {}) =>
+    approachHarness(frames, { id: 'explore', hopMs: 500, hops: 5, damageStop: true, ...extra });
+  const hit = hop([{}, {}, { damaged: HIT }]);
+  const walked = await explore(hit.ctx);
+  assert.deepEqual([walked.status, walked.hops, walked.health], ['attacked', 2, HIT]);
+  assert.equal(held(hit.touches), 0);
+  const ignored = await explore(hop([{}, {}, { damaged: HIT }], { damageStop: false }).ctx);
+  assert.notEqual(ignored.status, 'attacked');
+  // Approach: hit while the bar is still far → fight here; hit beside a near bar → near.
+  const far = await approach(
+    approachHarness([{ bars: [bar], damaged: HIT }], { damageStop: true }).ctx,
+  );
+  assert.deepEqual([far.status, far.hops], ['attacked', 0]);
+  const unseen = await approach(approachHarness([{ damaged: HIT }], { damageStop: true }).ctx);
+  assert.equal(unseen.status, 'attacked');
+  const close = await approach(
+    approachHarness([{ bars: [{ ...bar, w: 44 }], damaged: HIT }], { damageStop: true }).ctx,
+  );
+  assert.equal(close.status, 'near');
+  // Navigate stops on the way instead of running on while enemies hit the character.
+  const nav = navHarness(
+    [
+      { cone: 90, marker: { deg: 90, r: 1.2 } },
+      { cone: 90, marker: { deg: 90, r: 0.9 }, damaged: HIT },
+      { cone: 90, marker: { deg: 90, r: 0.05 } },
+    ],
+    { damageStop: true },
+  );
+  const stopped = await navigate(nav.ctx);
+  assert.deepEqual([stopped.status, stopped.health], ['attacked', HIT]);
+  assert.equal(held(nav.touches), 0);
+});
+
+test('combat keeps fighting without enemy bars while health keeps falling', async () => {
+  // Each round reads a frame before the switch (odd frames) and one after it (even frames).
+  const run = (hits) => {
+    let i = 0,
+      clock = 0;
+    const { ctx } = script([['world', 0]], { ...COMBAT, damageStop: true }, { enemy: ENEMY });
+    ctx.frame = async () => {
+      clock += 1000;
+      const n = i++;
+      return {
+        screen: 'world',
+        image: flat(0, n % 200),
+        health: 0.5,
+        damaged: hits.includes(n) ? HIT : undefined,
+      };
+    };
+    ctx.now = () => clock;
+    return combat(ctx);
+  };
+  const none = await run([]);
+  assert.deepEqual([none.status, none.rounds], ['no_enemy', 1]);
+  // Hits on the first two mid-round frames (1 and 3) keep it going; then two quiet rounds clear.
+  const hit = await run([1, 3]);
+  assert.deepEqual([hit.status, hit.hits, hit.rounds], ['clear', 2, 3]);
+  // A drop read right after switching compares two characters and is ignored.
+  const switched = await run([2]);
+  assert.equal(switched.status, 'no_enemy');
 });
 
 const TP_SCREEN = { width: 200, height: 100 };
@@ -1251,6 +1520,7 @@ test('teleport reports a missing quest or panel without tapping 传送, and neve
   const noPanel = tpHarness(MAP_STATES, mapStep, { list: () => '' });
   const result = await teleport(noPanel.ctx);
   assert.equal(result.status, 'no_teleport_button');
+  assert.equal(result.tried, 2);
   assert.ok(!noPanel.taps().some(([x, y]) => near(x, y, 180, 92)));
   // The second waypoint lies outside the panel and is tried too.
   assert.deepEqual(noPanel.taps().slice(2), [
@@ -1266,6 +1536,48 @@ test('teleport reports a missing quest or panel without tapping 传送, and neve
   const elsewhere = tpHarness({ ...MAP_STATES, world: { screen: 'dialogue' } }, mapStep, MAP_TEXTS);
   assert.equal((await teleport(elsewhere.ctx)).status, 'interrupted');
   assert.equal(elsewhere.taps().length, 0);
+});
+
+test('teleport skips waypoints already tried and taps the next nearest', async () => {
+  const step = (state, x, y) =>
+    state === 'centred' && near(x, y, 60, 30) ? 'list' : mapStep(state, x, y);
+  const { ctx, taps } = tpHarness(MAP_STATES, step, MAP_TEXTS);
+  ctx.skip = 1;
+  const result = await teleport(ctx);
+  assert.equal(result.status, 'teleported');
+  assert.equal(result.skipped, 1);
+  assert.deepEqual(taps().slice(2, 3), [[60, 30]]);
+
+  // Nothing left past the skipped ones.
+  const none = tpHarness(MAP_STATES, mapStep, MAP_TEXTS);
+  none.ctx.skip = 2;
+  assert.equal((await teleport(none.ctx)).status, 'no_waypoint');
+});
+
+test('teleport re-taps a waypoint whose first tap only closed the quest overlap list', async () => {
+  const states = {
+    ...MAP_STATES,
+    edge: { screen: 'world_map', quests: [[40, 70]], waypoints: [[130, 30]] },
+    onList: { screen: 'world_map', waypoints: [[130, 30]] },
+  };
+  const step = (state, x, y) => {
+    if (state === 'edge' && near(x, y, 40, 70)) return 'onList';
+    if (state === 'onList' && near(x, y, 130, 30)) return 'edge';
+    if (state === 'edge' && near(x, y, 130, 30)) return 'list';
+    return mapStep(state, x, y);
+  };
+  const { ctx, taps } = tpHarness(states, step, { ...MAP_TEXTS, onList: () => '' });
+  const result = await teleport(ctx);
+  assert.equal(result.status, 'teleported');
+  assert.equal(result.reopened, true);
+  assert.deepEqual(taps(), [
+    [10, 10],
+    [40, 70],
+    [130, 30],
+    [130, 30],
+    [150, 55],
+    [180, 92],
+  ]);
 });
 
 test('teleport zooms a zoomed-out map in until the quest diamond can be seen', async () => {
@@ -1403,6 +1715,33 @@ test('trackQuest closes the big map a far quest opens, once, and verifies the HU
   assert.equal(result.distance, '257m');
   assert.equal(h.taps(), 2);
   assert.equal(h.backs(), 1);
+});
+
+test('trackQuest re-tracks a quest in another region and leaves its map open', async () => {
+  // log (停止追踪) → untracked log (追踪目标) → map on the quest. The HUD still shows a distance,
+  // but a teleport found no quest on the map (`force`), so it is in another region.
+  const texts = {
+    untracked: { 35: '6277m' },
+    log: { 0: '进行中', 5: '骑士团手册问答', 85: '停止追踪' },
+    log2: { 0: '进行中', 85: '追踪目标' },
+  };
+  const step = (state, x, y) =>
+    state === 'log' && x === 180 && y === 90
+      ? 'log2'
+      : state === 'log2' && x === 180 && y === 90
+        ? 'map'
+        : trackStep(state, x, y);
+  const states = { ...TRACK_STATES, log2: 'menu', map: 'world_map' };
+  const h = trackHarness(states, texts, step);
+  h.ctx.routine = { ...TRACK, mapScreens: ['world_map'], keepMap: true, retrack: true };
+  h.ctx.force = true;
+  const result = await trackQuest(h.ctx);
+  assert.deepEqual(
+    [result.status, result.screen, result.retracked, result.quest],
+    ['tracked_far', 'world_map', 1, '骑士团手册问答'],
+  );
+  assert.equal(h.taps(), 3);
+  assert.equal(h.backs(), 0);
 });
 
 test('hudDistance reads the HUD quest distance 0m that OCR returns as om', () => {
