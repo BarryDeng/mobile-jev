@@ -221,10 +221,8 @@ export async function runContinuousAgent({
   let gamePackage;
   let lastHealth;
   let lastRoutineResult;
-  let needRevive = false;
 
   while (steps < maxSteps) {
-    let firstDecision = true;
     const policy = {
       decide: async (context) => {
         // The first recognised game screen fixes which client is being played.
@@ -239,7 +237,6 @@ export async function runContinuousAgent({
           lastRoutine: lastRoutineResult,
         });
         if (fight) {
-          firstDecision = false;
           pendingReason = undefined;
           lastFallback = 'layout-routine.combat';
           return actionDecision('layout-routine.combat', fight);
@@ -248,26 +245,21 @@ export async function runContinuousAgent({
         const healthKey = ratio === null ? null : ratio.toFixed(3);
         const allowHeal = healthKey !== attemptedHealth;
         const skip = new Set(lastFallback ? [lastFallback] : []);
+        // Healing and route choices are Jev's (see the layout playbook). Code steps in only when
+        // health shows an attack, or after a cycle ended with Jev reporting done or blocked.
+        const threat = context.observation.layout?.threat;
         const recovery =
-          firstDecision || ratio !== null || needRevive || context.observation.layout?.threat
+          pendingReason || threat === 'attacked'
             ? continuousRecovery(context.observation, {
                 reason: pendingReason ?? 'continue playing',
                 index: recoveryIndex,
                 skip,
-                allowHeal,
-                downed: needRevive,
+                allowHeal: false,
               })
             : null;
-        firstDecision = false;
-        const attacked =
-          recovery?.choice === 'layout-routine.combat' &&
-          context.observation.layout?.threat === 'attacked';
-        if (recovery && (pendingReason || attacked || recovery.choice === 'layout-routine.heal')) {
+        const attacked = recovery?.choice === 'layout-routine.combat' && threat === 'attacked';
+        if (recovery && (pendingReason || attacked)) {
           lastFallback = recovery.choice;
-          if (recovery.choice === 'layout-routine.heal') {
-            attemptedHealth = healthKey;
-            needRevive = false;
-          }
           pendingReason = undefined;
           return recovery;
         }
@@ -279,6 +271,7 @@ export async function runContinuousAgent({
           index: recoveryIndex++,
           skip,
           allowHeal,
+          downed: Boolean(context.observation.layout?.downed),
         });
         if (!fallback) return decision;
         lastFallback = fallback.choice;
@@ -295,7 +288,6 @@ export async function runContinuousAgent({
       onStep: (event) => options.onStep?.({ ...event, step: offset + event.step, cycle: cycles }),
       onAction: (event) => {
         lastRoutineResult = event.routine;
-        if (event.routine?.routine === 'combat' && event.routine.noFood) needRevive = true;
         return options.onAction?.({ ...event, step: offset + event.step, cycle: cycles });
       },
       onObservation: (event) =>
@@ -318,7 +310,9 @@ export async function runContinuousAgent({
     if (!TERMINAL_RECOVERY.has(result.status) && result.status !== 'step_limit')
       return { ...result, cycles, steps, continuous: true };
 
-    pendingReason = result.status;
+    // A cycle that only ran out of steps hands the next step back to Jev; code picks an activity
+    // only after Jev reported done or blocked.
+    pendingReason = result.status === 'step_limit' ? undefined : result.status;
     recoveryIndex++;
     if (result.steps === 0) {
       const recovery = continuousRecovery(result.observation, {

@@ -1,6 +1,23 @@
 {
   "name": "Genshin Impact mobile HUD (default layout)",
   "notes": "Calibrated on a 2400x1080 Android emulator (default touch layout, zh-CN client). x/y are control centres on the reference screen; the anchor edge keeps its distance when the aspect ratio differs. w/h are tap-area sizes. Probes are reference-space pixels with expected RGB; the first screen whose probes all match is reported. Recalibrate with `pnpm agent layout --layout layouts/genshin-impact.json --out artifacts/layout.png`. Interaction prompt lists (1–5 entries, centred at y 538 with a 90 px pitch) were measured with 1 and 3 entries and extrapolated for 2, 4 and 5; reply options were measured with two options only. Button `text` and screen `texts` boxes are OCR regions: prompt labels span x 1480–1760, reply options x 1535–1800, and the dialogue speaker and two subtitle lines sit above the bottom edge.",
+  "playbook": [
+    "These are habits of an experienced Genshin Impact player. They are advice, not rules: you choose every step, and when the screen shows something they do not cover, decide as a careful player would.",
+    "Quest first: the tracked quest is the main thread. Side activities (exploring, picking things up, fighting) are worth a short detour only when they are right in front of you or in the way.",
+    "When code reads the tracked quest as far away, a player teleports near it with Teleport near quest 传送到任务附近 instead of running there; when code reads it as close, the player walks with Go to quest marker 前往任务标记 and keeps walking while the distance keeps shrinking.",
+    "When code reads no quest distance on the HUD, or code found no tracked quest on the world map at the last teleport, a player tracks the quest again with Track quest 追踪任务 before teleporting or walking; opening the map again finds nothing.",
+    "When Track quest 追踪任务 reports the quest is far and leaves the world map open on it, a player teleports right away from that map.",
+    "When code measured that walking made no progress once, a player looks at what is in the way before walking again: around a cliff face, rock or building they go around the side that looks open (Go around left 向左绕行 or Go around right 向右绕行); a low wall or slope they just walk over again (climbing is fine when the quest is above); water or a deep drop they avoid by going around or teleporting. When it made no progress twice or more in a row, the player stops walking into the obstacle and teleports to a nearby teleport point, then walks again from there.",
+    "When a screenshot of the screen is given, a player uses it like their own eyes: what is ahead of the character, whether the path is open, whether enemies, NPCs or chests are in view. Code's text facts (distances, health, screen names) are measured and stay authoritative where they say something.",
+    "While swimming, a player teleports rather than swimming on: swimming drains stamina and the shore may be a cliff. While climbing, the player lets the walk finish the climb when the quest is above (高处).",
+    "When the walk to the quest reports arrived with the area changed, the player looks at what appeared (a prompt, an NPC, an enemy) and deals with it. When it reports searched (nothing happened inside the quest area), the player does not walk into the same area again; they explore nearby, pick up or talk to whatever prompt appears, or look for enemies to fight.",
+    "Interaction prompts on the right are what a player presses next: pick up items, open chests, talk to NPCs, especially when the prompt or NPC name matches the quest. With several prompts, the one matching the quest objective comes first. A 坐下 (sit down) prompt is just a chair or stool, never the quest: a player ignores it and keeps going toward the quest.",
+    "In a conversation, a player continues it; at reply options they pick the reply that moves the quest forward, and avoid replies that only end the chat or ask about unrelated things.",
+    "When an enemy is visible or indicated, a player approaches it, and fights once it is near. A fight that just ended clear is followed by going back to the quest.",
+    "When code reads the active character's health as low and no enemy is attacking, a player heals at a Statue of The Seven with Heal at Statue 七天神像回血 before going on. A player also heals there when the last fight left teammates downed with no food to revive them. When code says healing failed from here, the player does not try it again on the spot: they go on with the quest carefully (avoiding fights), or teleport somewhere else first and heal from there.",
+    "A map, menu or quest log that is still open after a routine finished is closed with BACK before playing on in the open world.",
+    "A player does not repeat the same action three times in a row when it keeps giving the same result: they switch to a different approach (teleport instead of walking, track the quest again, explore around, or fight)."
+  ],
   "appLabel": "Genshin Impact 原神",
   "packageNames": [
     "com.miHoYo.GenshinImpact",
@@ -1388,7 +1405,7 @@
         {
           "anchor": "center",
           "x": 1510,
-          "y": 702,
+          "y": 710,
           "rgb": [255, 255, 255],
           "tolerance": 25
         },
@@ -1785,7 +1802,60 @@
       ]
     },
     "world_climbing": {
-      "description": "Open world 大世界 while the character climbs a wall, cliff or tree: sprint and elemental skill are hidden and the normal attack button drops the character down 下落.",
+      "description": "Open world 大世界 while the character climbs a wall, cliff or tree: sprint and elemental skill are hidden and the normal attack button shows the drop 下落 icon, which lets go of the wall.",
+      "probes": [
+        {
+          "anchor": "top-left",
+          "x": 162,
+          "y": 38,
+          "rgb": [255, 255, 255],
+          "tolerance": 25
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 2087,
+          "y": 704,
+          "rgb": [232, 233, 232],
+          "tolerance": 30
+        },
+        {
+          "anchor": "bottom-right",
+          "x": 1917,
+          "y": 829,
+          "template": "genshin-impact/icons/climb-drop.png",
+          "min": 0.6,
+          "search": 6
+        }
+      ],
+      "texts": [
+        {
+          "id": "quest_title",
+          "label": "Tracked quest objective 追踪任务目标",
+          "anchor": "top-left",
+          "x": 400,
+          "y": 328,
+          "w": 420,
+          "h": 40,
+          "requires": "quest_distance",
+          "remember": true
+        },
+        {
+          "id": "quest_distance",
+          "label": "Distance to the tracked quest marker 任务距离, or 已到达任务区域 (you are inside the quest area; it has no single marker). A 低处/高处 prefix means the quest is below/above you",
+          "anchor": "top-left",
+          "x": 272,
+          "y": 360,
+          "w": 176,
+          "h": 32,
+          "fix": {
+            "[Oo]": "0"
+          },
+          "match": "^(?:[低高]处\\s*)?(\\d+\\s*m|已到达任务区域?)$"
+        }
+      ]
+    },
+    "world_gliding": {
+      "description": "Open world 大世界 while the character glides with the wind glider 风之翼 (or falls): sprint and skills are hidden and, unlike climbing, the attack button shows no drop 下落 icon; the jump spot shows a drop icon that closes the glider. The glider flies where the joystick points and lands by itself; Go to quest marker 前往任务标记 keeps steering toward the quest while gliding.",
       "probes": [
         {
           "anchor": "top-left",
@@ -1840,6 +1910,7 @@
       "w": 300,
       "h": 30,
       "match": "^\\d+\\s*/\\s*\\d+$",
+      "low": 0.25,
       "screens": [
         "world",
         "world_talk",
@@ -1848,6 +1919,7 @@
         "world_prompts_3",
         "world_prompts_4",
         "world_prompts_5",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ]
@@ -1871,6 +1943,7 @@
       "world_prompts_3",
       "world_prompts_4",
       "world_prompts_5",
+      "world_gliding",
       "world_climbing",
       "world_swimming"
     ]
@@ -1938,7 +2011,7 @@
       "damageStop": true,
       "type": "navigate",
       "label": "Go to quest marker 前往任务标记",
-      "description": "Code turns the camera toward the tracked quest's yellow marker on the minimap and runs toward it for up to about 25 seconds (longer when screenshots are slow), re-aiming as it goes. It stops when the marker reaches the character (arrived), when someone to talk to appears, when the screen leaves the open world, or when the character is stuck. The quest distance text shows the remaining distance; use it again while the distance keeps shrinking. If the quest is more than 150m away, use teleport first instead of walking; walking that far can lead into water or cliffs. When the quest marks an area (a yellow ring on the minimap, HUD 已到达任务区域), it walks into the ring, then stands still a few seconds in case the quest reacts; with no change it walks circles inside the ring for about 20 seconds. It reports arrived with area changed as soon as something happens there (a new screen such as a talk or pickup prompt, or the ring going away), or searched when nothing happened; then look at the screen or try something else (explore, interact, fight) rather than walking into the area again. It stops with attacked when code measures the active character losing health on the way (enemies are hitting it, maybe out of view); then fight with Fight 战斗.",
+      "description": "Code turns the camera toward the tracked quest's yellow marker on the minimap and runs toward it for about 25 seconds, longer for a far quest (about 1 second per 1.7m of quest distance, up to 3 minutes; it keeps going for another 30 seconds each time the quest distance has shrunk by 10m, up to 6 minutes; longer again when screenshots are slow), re-aiming as it goes. It walks in a straight line, which suits open country outside towns; in a town or other built-up place (streets, houses, roofs and walls close together on the screenshot or minimap), use Find a way to quest 沿路前往任务 instead. Every few seconds it double-jumps, so running off a cliff opens the wind glider 风之翼 instead of falling; while gliding it keeps steering toward the marker without jumping. It stops when the marker reaches the character (arrived), when someone to talk to appears, when the screen leaves the open world, or when the character is stuck. The quest distance text shows the remaining distance; use it again while the distance keeps shrinking. If the quest is more than 150m away, use teleport first instead of walking; walking that far can lead into water or cliffs. When the quest marks an area (a yellow ring on the minimap, HUD 已到达任务区域), it walks into the ring, then stands still a few seconds in case the quest reacts; with no change it walks circles inside the ring for about 20 seconds. It reports arrived with area changed as soon as something happens there (a new screen such as a talk or pickup prompt, or the ring going away), or searched when nothing happened; then look at the screen or try something else (explore, interact, fight) rather than walking into the area again. It stops with attacked when code measures the active character losing health on the way (enemies are hitting it, maybe out of view); then fight with Fight 战斗.",
       "screens": [
         "world",
         "world_talk",
@@ -1947,10 +2020,19 @@
         "world_prompts_3",
         "world_prompts_4",
         "world_prompts_5",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ],
       "stopScreens": ["world_talk"],
+      "ignorePrompt": {
+        "anchor": "center",
+        "x": 1620,
+        "y": 538,
+        "w": 280,
+        "h": 56,
+        "match": "坐下"
+      },
       "recover": {
         "world_climbing": "normal_attack"
       },
@@ -1958,11 +2040,17 @@
       "climbMs": 5000,
       "detourMs": 1500,
       "stuckButton": "jump",
+      "jumpButton": "jump",
+      "jumpEvery": 2000,
+      "jumpGapMs": 300,
+      "airScreens": ["world_gliding"],
       "progressText": "quest_distance",
       "progressMetres": 5,
       "aboveText": "高处",
       "sidestepMs": 2000,
       "sidestepTries": 2,
+      "routeAfter": 2,
+      "exploreWithin": 5,
       "revealButton": "quest_objective",
       "marker": {
         "rgb": [251, 232, 2],
@@ -1983,6 +2071,49 @@
             "hudShare": 0.04
           }
         ],
+        "icons": {
+          "hud": {
+            "anchor": "top-left",
+            "x": 162,
+            "y": 330,
+            "w": 44,
+            "h": 44
+          },
+          "hudThreshold": 0.85,
+          "threshold": 0.65,
+          "distance": {
+            "anchor": "top-left",
+            "x": 272,
+            "y": 360,
+            "w": 176,
+            "h": 32
+          },
+          "metresPerHalf": 43,
+          "rim": 1.2,
+          "maxJump": 0.3,
+          "kinds": {
+            "gold": {
+              "hud": ["genshin-impact/icons/hud-gold.png"],
+              "minimap": ["genshin-impact/icons/minimap-gold.png"]
+            },
+            "purple": {
+              "hud": [
+                "genshin-impact/icons/hud-purple.png",
+                "genshin-impact/icons/hud-purple-excl.png"
+              ],
+              "minimap": ["genshin-impact/icons/minimap-purple.png"]
+            },
+            "blue": {
+              "hud": ["genshin-impact/icons/hud-blue.png"],
+              "minimap": ["genshin-impact/icons/minimap-blue.png"]
+            },
+            "excl": {
+              "hud": ["genshin-impact/icons/hud-excl.png"],
+              "minimap": ["genshin-impact/icons/minimap-excl.png"],
+              "threshold": 0.62
+            }
+          }
+        },
         "area": {
           "minRadius": 0.1,
           "maxResidual": 0.2,
@@ -1995,6 +2126,7 @@
       },
       "turnDeg": 10,
       "aimTries": 2,
+      "minimapRotates": true,
       "aimDeg": 10,
       "climbOffDeg": 60,
       "arriveRadius": 0.03,
@@ -2003,10 +2135,25 @@
       "areaCircleMs": 20000,
       "areaHopMs": 1200,
       "screenMarker": {
-        "rgb": [233, 180, 13],
-        "tolerance": [25, 30, 25],
-        "pixels": [300, 700],
-        "size": [36, 62],
+        "markers": [
+          {
+            "rgb": [233, 180, 13],
+            "tolerance": [25, 30, 25],
+            "pixels": [300, 700],
+            "size": [36, 62]
+          },
+          {
+            "rgb": [95, 145, 229],
+            "tolerance": [35, 35, 30],
+            "pixels": [130, 230],
+            "w": [11, 20],
+            "h": [34, 46],
+            "core": {
+              "min": 150,
+              "share": 0.5
+            }
+          }
+        ],
         "radius": 0.35,
         "viewDegreesPerPixel": 0.035,
         "turnDeg": 8,
@@ -2025,6 +2172,14 @@
       "stuckLimit": 5,
       "minFrames": 10,
       "maxMs": 25000,
+      "distanceBudget": {
+        "metresPerSecond": 2,
+        "margin": 1.2,
+        "maxMs": 180000
+      },
+      "extendMs": 30000,
+      "extendMetres": 10,
+      "extendMaxMs": 360000,
       "steer": true
     },
     {
@@ -2154,10 +2309,102 @@
       "maxMs": 45000
     },
     {
+      "id": "detour_left",
+      "extends": "navigate",
+      "label": "Go around left 向左绕行",
+      "description": "Only offered when the last walk to the quest made no progress. Code first walks to the left of the current camera direction for about 3 seconds, then walks to the quest marker like Go to quest marker 前往任务标记. Choose it when the screenshot shows the way ahead blocked (a cliff, wall, water, rocks or a building) and the left side looks open.",
+      "detour": "left",
+      "sidestepMs": 3000
+    },
+    {
+      "id": "detour_right",
+      "extends": "navigate",
+      "label": "Go around right 向右绕行",
+      "description": "Only offered when the last walk to the quest made no progress. Code first walks to the right of the current camera direction for about 3 seconds, then walks to the quest marker like Go to quest marker 前往任务标记. Choose it when the screenshot shows the way ahead blocked (a cliff, wall, water, rocks or a building) and the right side looks open.",
+      "detour": "right",
+      "sidestepMs": 3000
+    },
+    {
+      "id": "route_to_quest",
+      "extends": "navigate",
+      "label": "Find a way to quest 沿路前往任务",
+      "description": "Code reads the minimap as open ground (streets, paths, grass) and obstacles (roofs, walls, water), plans a way around the obstacles toward the quest marker, and keeps steering along it without turning the camera. This is the way to walk in towns: choose it when the screenshot or minimap shows the character in a town or other built-up place (streets, houses, roofs and walls close together). Outside towns, use Go to quest marker 前往任务标记, which walks straight. Code also switches to it by itself when straight walks to the quest made no progress twice in a row. It cannot plan climbs or height changes, and its reading of 璃月 roofs is unreliable.",
+      "route": {
+        "bounds": {
+          "anchor": "top-left",
+          "x": 299,
+          "y": 155,
+          "w": 224,
+          "h": 224
+        },
+        "cells": 45,
+        "hopMs": 700,
+        "holdHops": 3,
+        "palette": {
+          "walk": [
+            [188, 182, 141],
+            [199, 174, 132],
+            [165, 144, 102],
+            [181, 168, 155],
+            [204, 199, 200],
+            [193, 204, 194],
+            [161, 175, 165],
+            [137, 141, 120],
+            [135, 137, 129],
+            [139, 148, 62],
+            [114, 112, 77],
+            [179, 185, 168],
+            [184, 160, 116]
+          ],
+          "block": [
+            [137, 100, 71],
+            [87, 101, 106],
+            [56, 79, 69],
+            [64, 70, 57],
+            [60, 90, 75],
+            [176, 140, 120],
+            [166, 128, 108],
+            [126, 146, 110],
+            [110, 128, 94],
+            [146, 160, 146]
+          ],
+          "water": [
+            [65, 143, 154],
+            [43, 93, 110],
+            [33, 107, 129],
+            [34, 108, 128]
+          ],
+          "icons": [
+            {
+              "min": [226, 226, 226]
+            },
+            {
+              "min": [0, 180, 200],
+              "max": [80, 255, 255]
+            },
+            {
+              "max": [95, 95, 95],
+              "maxChroma": 12
+            }
+          ]
+        },
+        "plan": {
+          "inflate": 0,
+          "unknownCost": 3,
+          "costWeight": 0.3,
+          "lookahead": 8,
+          "shore": {
+            "margin": 2,
+            "cost": 3
+          }
+        }
+      }
+    },
+    {
       "id": "teleport",
       "type": "teleport",
       "label": "Teleport near quest 传送到任务附近",
-      "description": "Code opens the world map, centres it on the tracked quest, picks the unlocked teleport waypoint or Statue of The Seven nearest to the quest, confirms its teleport panel by OCR, taps 传送 once and waits for the open world to load. Use it when the tracked quest distance is more than 150m instead of walking; if code finds the quest close to you on the map it closes the map without teleporting, and you should walk there with navigate. While swimming it teleports even to a close quest, because swimming toward it can end at a cliff. On failure the world map may stay open; press BACK to close it.",
+      "description": "Code tracks the quest again in the quest log (停止追踪, then 追踪) so the game opens the world map centred on it, zooms the map in fully, picks the unlocked teleport waypoint or Statue of The Seven nearest to the quest (zooming out step by step when none is near), confirms its teleport panel by OCR, taps 传送 once and waits for the open world to load. Use it when the tracked quest distance is more than 150m instead of walking; if code finds the quest close to you on the map it closes the map without teleporting, and you should walk there with navigate. While swimming it teleports even to a close quest, because swimming toward it can end at a cliff. On failure the world map may stay open; press BACK to close it.",
       "screens": [
         "world",
         "world_talk",
@@ -2180,8 +2427,13 @@
         "world_swimming"
       ],
       "open": "minimap",
+      "track": "track_quest",
       "zoomIn": "map_zoom_in",
       "zoomTaps": 3,
+      "maxZoom": "map_zoom_in",
+      "maxZoomTaps": 5,
+      "zoomOut": "map_zoom_out",
+      "zoomOutTaps": 3,
       "mapScreen": "world_map",
       "quest": [
         {
@@ -2189,6 +2441,14 @@
           "tolerance": [30, 30, 25],
           "pixels": [60, 110],
           "size": [13, 19]
+        },
+        {
+          "rgb": [95, 145, 229],
+          "tolerance": [30, 30, 25],
+          "pixels": [60, 110],
+          "w": [10, 17],
+          "h": [21, 29],
+          "stack": [15, 30]
         },
         {
           "rgb": [233, 180, 13],
@@ -2216,6 +2476,12 @@
             "pixels": [120, 200],
             "w": [30, 42],
             "h": [20, 30]
+          },
+          {
+            "pixels": [200, 320],
+            "w": [32, 44],
+            "h": [32, 44],
+            "ringRadius": 21
           }
         ],
         "ring": {
@@ -2250,6 +2516,7 @@
         "h": 32
       },
       "nearMeters": 150,
+      "questText": "quest_title",
       "forceScreens": ["world_swimming"],
       "title": {
         "anchor": "top-right",
@@ -2292,7 +2559,7 @@
       "id": "heal",
       "type": "teleport",
       "label": "Heal at Statue 七天神像回血",
-      "description": "Code opens the world map and teleports to a visible unlocked Statue of The Seven so its automatic blessing can restore a low-health party. Use it when the active character has at most 25% health. If no statue is visible at the current map zoom, it leaves the map open and continuous play falls back to another activity.",
+      "description": "Code opens the world map and teleports to a visible unlocked Statue of The Seven so its automatic blessing can restore a low-health party. Use it when the active character has at most 25% health. If no statue is visible, it zooms the map out up to three steps; if still none, it leaves the map open and continuous play falls back to another activity.",
       "screens": [
         "world",
         "world_talk",
@@ -2315,6 +2582,8 @@
         "world_swimming"
       ],
       "open": "minimap",
+      "zoomButton": "map_zoom_out",
+      "zoomTaps": 3,
       "mapScreen": "world_map",
       "targetWaypoint": {
         "rgb": [50, 152, 216],
@@ -2324,6 +2593,12 @@
             "pixels": [120, 200],
             "w": [30, 42],
             "h": [20, 30]
+          },
+          {
+            "pixels": [200, 320],
+            "w": [32, 44],
+            "h": [32, 44],
+            "ringRadius": 21
           }
         ],
         "ring": {
@@ -2340,6 +2615,12 @@
             "pixels": [120, 200],
             "w": [30, 42],
             "h": [20, 30]
+          },
+          {
+            "pixels": [200, 320],
+            "w": [32, 44],
+            "h": [32, 44],
+            "ringRadius": 21
           }
         ],
         "ring": {
@@ -2486,6 +2767,7 @@
         "world_prompts_3",
         "world_prompts_2",
         "world_prompts_1",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ]
@@ -2507,6 +2789,7 @@
         "world_prompts_3",
         "world_prompts_2",
         "world_prompts_1",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ]
@@ -2518,6 +2801,17 @@
       "anchor": "top-left",
       "x": 150,
       "y": 418,
+      "w": 50,
+      "h": 50,
+      "screens": ["world_map"]
+    },
+    {
+      "id": "map_zoom_out",
+      "label": "Zoom out map 缩小地图",
+      "description": "Zooms the world map out one step",
+      "anchor": "top-left",
+      "x": 150,
+      "y": 658,
       "w": 50,
       "h": 50,
       "screens": ["world_map"]
@@ -2539,6 +2833,7 @@
         "world_prompts_3",
         "world_prompts_2",
         "world_prompts_1",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ]
@@ -2560,6 +2855,7 @@
         "world_prompts_3",
         "world_prompts_2",
         "world_prompts_1",
+        "world_gliding",
         "world_climbing",
         "world_swimming"
       ]

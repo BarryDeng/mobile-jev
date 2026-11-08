@@ -263,7 +263,20 @@ async function main() {
         policy: new TypeSafePolicy({
           threshold: Number(values.confidence),
           request: async (request) => {
-            await record({ event: 'model_request', url: request.url, body: request.body });
+            // Traces keep the image size, not its base64 pixels.
+            const assets =
+              request.body.assets &&
+              Object.fromEntries(
+                Object.entries(request.body.assets).map(([ref, a]) => [
+                  ref,
+                  { format: a.format, base64Bytes: a.data_base64?.length },
+                ]),
+              );
+            await record({
+              event: 'model_request',
+              url: request.url,
+              body: assets ? { ...request.body, assets } : request.body,
+            });
             const bytes = await modelRequest(request);
             await record({ event: 'model_response', body: decodeJson(bytes) });
             return bytes;

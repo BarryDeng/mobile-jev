@@ -9,6 +9,7 @@ import {
   annotateScreenshot,
   detectScreen,
   hudScale,
+  layoutObservation,
   layoutRoutines,
   loadLayout,
   resolveRect,
@@ -67,6 +68,65 @@ const layout = validateLayout({
     },
     { id: 'menu', label: 'Menu', x: 10, y: 10, w: 10, h: 10 },
   ],
+});
+
+test('a template probe tells two screens apart by an icon shape near its point', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'layout-'));
+  // A white "L" icon: drop 下落 shown on the attack button only while climbing.
+  const icon = (ox, oy) => [
+    { left: ox - 4, top: oy - 6, right: ox - 1, bottom: oy + 7, rgb: [240, 240, 240] },
+    { left: ox - 1, top: oy + 3, right: ox + 6, bottom: oy + 7, rgb: [240, 240, 240] },
+  ];
+  writeFileSync(join(dir, 'drop.png'), image(21, 21, [40, 60, 30], icon(10, 10)));
+  const spec = {
+    name: 'Test game',
+    packageNames: [GAME],
+    reference: { width: 200, height: 100 },
+    buttons: [{ id: 'menu', label: 'Menu', x: 10, y: 10, w: 10, h: 10 }],
+    screens: {
+      climbing: {
+        description: 'Climbing',
+        probes: [
+          { x: 10, y: 10, rgb: [250, 0, 0] },
+          { anchor: 'bottom-right', x: 170, y: 70, template: 'drop.png', min: 0.6, search: 3 },
+        ],
+      },
+      gliding: { description: 'Gliding', probes: [{ x: 10, y: 10, rgb: [250, 0, 0] }] },
+    },
+  };
+  writeFileSync(join(dir, 'layout.json'), JSON.stringify(spec));
+  const loaded = loadLayout(join(dir, 'layout.json'));
+  const red = { left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] };
+  const at = (patches) =>
+    detectScreen(
+      decodePng(image(200, 100, [40, 60, 30], [red, ...patches])),
+      { width: 200, height: 100 },
+      loaded,
+    );
+  const climbing = at(icon(172, 68));
+  assert.equal(climbing.screen, 'climbing');
+  assert.ok(climbing.results.climbing.probes[1].score > 0.9);
+  // A different icon (a sword-like bar) on the same button is not the drop icon.
+  const gliding = at([{ left: 160, top: 69, right: 181, bottom: 72, rgb: [240, 240, 240] }]);
+  assert.equal(gliding.screen, 'gliding');
+  assert.ok(gliding.results.climbing.probes[1].score < 0.6);
+  // Templates are files next to the layout: a bare validated layout cannot match them.
+  assert.throws(
+    () =>
+      detectScreen(decodePng(image(200, 100)), { width: 200, height: 100 }, validateLayout(spec)),
+    /not loaded/,
+  );
+  assert.throws(
+    () =>
+      validateLayout({
+        ...spec,
+        screens: { x: { probes: [{ x: 1, y: 1, template: 'drop.png', min: 2 }] } },
+      }),
+    /min must be a score/,
+  );
 });
 
 test('PNG round-trips through the screencap decoder', () => {
@@ -832,6 +892,8 @@ test('a navigate that does not shrink the quest distance is reported and lets te
         marker: { rgb: [250, 230, 0], tolerance: 40 },
         progressText: 'dist',
         progressMetres: 5,
+        maxMs: 25000,
+        distanceBudget: { metresPerSecond: 3, maxMs: 120000 },
       },
       {
         id: 'teleport',
@@ -865,7 +927,11 @@ test('a navigate that does not shrink the quest distance is reported and lets te
   const original = { navigate: ROUTINES.navigate, teleport: ROUTINES.teleport };
   const seen = [];
   let status = 'timeout';
-  ROUTINES.navigate = async () => ({ routine: 'navigate', status });
+  const budgets = [];
+  ROUTINES.navigate = async (ctx) => {
+    budgets.push(ctx.routine.maxMs);
+    return { routine: 'navigate', status };
+  };
   ROUTINES.teleport = async (ctx) => {
     seen.push(ctx.force);
     return { routine: 'teleport', status: 'teleported' };
@@ -875,9 +941,11 @@ test('a navigate that does not shrink the quest distance is reported and lets te
       { type: 'tap-element', elementId: 'layout-routine.navigate' },
       { expected: await device.observe() },
     );
-  const blocked = 'made no progress (89m → 87m)';
+  const blocked = 'made no progress once (89m → 87m)';
   try {
     assert.equal((await walk()).routine.fromMetres, 89);
+    // 89m at 3 m/s with a 1.2 margin: the walk gets 35.6 s instead of the fixed 25 s.
+    assert.deepEqual(budgets, [35600]);
     distance = '87m';
     const after = await device.observe();
     assert.ok(after.layout.description.includes(blocked));
@@ -906,7 +974,222 @@ test('a navigate that does not shrink the quest distance is reported and lets te
   }
 });
 
-test('a teleport that finds no quest withholds teleport until track_quest runs', async () => {
+test('code names the quest distance bucket, low health and downed teammates, and passes the playbook', () => {
+  const teleport = {
+    type: 'teleport',
+    screens: ['world'],
+    open: 'menu',
+    doneScreens: ['world'],
+    quest: { rgb: [90, 140, 230], tolerance: 30, pixels: [5, 50], size: [2, 9] },
+    waypoint: {
+      rgb: [50, 150, 210],
+      tolerance: 30,
+      shapes: [{ pixels: [5, 50], w: [2, 9], h: [2, 9] }],
+      ring: { radius: 4, white: 215, min: 4 },
+    },
+    title: { x: 100, y: 10, w: 40, h: 10 },
+    button: { x: 100, y: 90, w: 40, h: 10 },
+  };
+  const profile = validateLayout({
+    ...layout,
+    playbook: ['A far quest is teleported to.'],
+    screens: {
+      ...layout.screens,
+      world: {
+        ...layout.screens.world,
+        texts: [
+          { id: 'dist', label: 'Quest distance', x: 50, y: 40, w: 60, h: 10, match: 'm$' },
+          { id: 'title', label: 'Quest title', x: 50, y: 20, w: 60, h: 10 },
+        ],
+      },
+    },
+    statusTexts: [
+      { id: 'hp', label: 'Health', x: 100, y: 90, w: 50, h: 10, screens: ['world'], low: 0.25 },
+    ],
+    joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+    minimap: { x: 60, y: 50, w: 20, h: 20 },
+    camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+    routines: [
+      {
+        id: 'navigate',
+        type: 'navigate',
+        label: 'Navigate',
+        screens: ['world'],
+        marker: { rgb: [250, 230, 0], tolerance: 40 },
+        progressText: 'dist',
+      },
+      { ...teleport, id: 'teleport', label: 'Teleport', nearMeters: 150, questText: 'title' },
+      { ...teleport, id: 'heal', label: 'Heal' },
+      { id: 'fight', type: 'combat', label: 'Fight', screens: ['world'], attack: 'attack' },
+    ],
+  });
+  assert.throws(() => validateLayout({ ...profile, playbook: [''] }), /playbook/);
+  assert.throws(
+    () => validateLayout({ ...profile, statusTexts: [{ ...profile.statusTexts[0], low: 2 }] }),
+    /low must be a ratio/,
+  );
+  const world = decodePng(
+    image(200, 100, [0, 0, 0], [{ left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] }]),
+  );
+  const base = {
+    deviceId: 'phone',
+    phone: { packageName: GAME },
+    screen: { width: 200, height: 100 },
+    elements: [],
+  };
+  const observe = (dist, hp, options = {}) =>
+    layoutObservation(base, world, profile, {
+      texts: { 'screen:dist': dist, 'status:hp': hp },
+      ...options,
+    }).layout;
+  const far = observe('320m', '7000/7301');
+  assert.match(far.description, /tracked quest as far away: 320m, more than 150m/);
+  assert.doesNotMatch(far.description, /Health as low/);
+  assert.deepEqual(far.playbook, ['A far quest is teleported to.']);
+  assert.match(observe('150m', '').description, /as close: 150m, 150m or less/);
+  assert.match(observe('', '743/7301').description, /no quest distance.*Health as low: 743\/7301/);
+
+  const after = (routine) => ({
+    action: { type: 'tap-element', elementId: `layout-routine.${routine.routine}` },
+    routine,
+  });
+  const fought = observe('20m', '7000/7301', {
+    last: after({ routine: 'fight', status: 'clear', noFood: true }),
+  });
+  assert.equal(fought.downed, true);
+  assert.match(fought.description, /teammates downed .*until Heal restores/);
+  assert.equal(observe('20m', '', { downed: true }).downed, true);
+  const healed = observe('20m', '', {
+    downed: true,
+    last: after({ routine: 'heal', status: 'teleported', target: '七天神像' }),
+  });
+  assert.equal(healed.downed, undefined);
+
+  // Failed heals are counted and stated after the map closes, until a teleport moves the player.
+  let failed;
+  for (let i = 0; i < 2; i++)
+    failed = observe('20m', '', {
+      healFailed: failed?.healFailed,
+      last: after({ routine: 'heal', status: 'no_quest' }),
+    });
+  assert.equal(failed.healFailed.count, 2);
+  const closed = observe('20m', '', { healFailed: failed.healFailed });
+  assert.match(closed.description, /Heal failed 2 times in a row from here/);
+  const moved = observe('20m', '', {
+    healFailed: failed.healFailed,
+    last: after({ routine: 'teleport', status: 'teleported', target: 'x' }),
+  });
+  assert.equal(moved.healFailed, undefined);
+
+  // Teleport is a step toward the main quest: once a landing was no closer than the last one, or
+  // walking got closer than the landing, it stays hidden until the tracked quest title changes.
+  const full = (dist, options, title = '寻找线索') =>
+    layoutObservation(base, world, profile, {
+      texts: { 'screen:dist': dist, 'screen:title': title },
+      routines: true,
+      ...options,
+    });
+  const offered = (o) => o.elements.some((e) => e.id === 'layout-routine.teleport');
+  const hop1 = after({ routine: 'teleport', status: 'teleported', target: 'a' });
+  const first = full('268m', { last: hop1 });
+  assert.equal(first.layout.landed.metres, 268);
+  assert.equal(first.layout.landed.quest, '寻找线索');
+  assert.equal(first.layout.landed.lock, undefined);
+  assert.ok(offered(first));
+  const hop2 = after({ routine: 'teleport', status: 'unverified', target: 'a' });
+  const again = full('268m', { last: hop2, landed: first.layout.landed });
+  assert.equal(again.layout.landed.lock, 'stale');
+  assert.ok(!offered(again));
+  assert.ok(again.elements.some((e) => e.id === 'layout-routine.heal'));
+  assert.match(
+    again.layout.description,
+    /landed no closer .*268m → 268m.*until the tracked quest "寻找线索" changes/,
+  );
+  assert.match(again.layout.description, /far away: 268m.*teleport is unavailable/);
+  // The lock holds across any number of actions, a failed walk or a fight while the title stays.
+  const walked = after({ routine: 'navigate', status: 'timeout' });
+  let held = again.layout.landed;
+  for (const [dist, last] of [
+    ['265m', walked],
+    ['300m', after({ routine: 'fight', status: 'no_enemy' })],
+    ['240m', walked],
+  ]) {
+    const o = full(dist, { last, landed: held });
+    assert.equal(o.layout.landed.lock, 'stale');
+    assert.ok(!offered(o));
+    held = o.layout.landed;
+  }
+  // An unreadable title keeps the lock; a new tracked quest clears it.
+  assert.ok(!offered(full('240m', { last: walked, landed: held }, '')));
+  const next = full('240m', { last: walked, landed: held }, '前往璃月港');
+  assert.equal(next.layout.landed, undefined);
+  assert.ok(offered(next));
+  // A teleport that got closer keeps teleport until walking gets closer still.
+  const better = full('120m', { last: hop1, landed: { metres: 268, quest: '寻找线索' } });
+  assert.equal(better.layout.landed.lock, undefined);
+  assert.ok(offered(better));
+  const nearer = full('90m', { last: walked, landed: better.layout.landed });
+  assert.equal(nearer.layout.landed.lock, 'closer');
+  assert.ok(!offered(nearer));
+  assert.match(nearer.layout.description, /120m at the teleport landing → 90m/);
+  // Heal's teleport keeps the lock but allows one teleport back to the quest, then locks again.
+  const healedLock = full('400m', {
+    last: after({ routine: 'heal', status: 'teleported', target: '七天神像' }),
+    landed: nearer.layout.landed,
+  });
+  assert.equal(healedLock.layout.landed.lock, 'closer');
+  assert.equal(healedLock.layout.landed.away, true);
+  assert.ok(offered(healedLock));
+  assert.match(healedLock.layout.description, /available once to go back/);
+  const stillAway = full('400m', { last: walked, landed: healedLock.layout.landed });
+  assert.ok(offered(stillAway));
+  const back = full('270m', { last: hop1, landed: stillAway.layout.landed });
+  assert.equal(back.layout.landed.lock, 'closer');
+  assert.equal(back.layout.landed.away, undefined);
+  assert.ok(!offered(back));
+  const backAgain = full('300m', { last: walked, landed: back.layout.landed });
+  assert.ok(!offered(backAgain));
+  // Healing before any lock keeps the landing too: the trip back is compared with it.
+  const unlocked = full('500m', {
+    last: after({ routine: 'heal', status: 'unverified', target: '七天神像' }),
+    landed: first.layout.landed,
+  });
+  assert.ok(offered(unlocked));
+  const returned = full('268m', { last: hop1, landed: unlocked.layout.landed });
+  assert.equal(returned.layout.landed.lock, 'stale');
+  assert.ok(!offered(returned));
+  // Walking stuck twice in a row under the lock: teleport is offered once more for this quest.
+  const stuckWalk = after({ routine: 'navigate', status: 'stuck', fromMetres: 300 });
+  const stuckOnce = full('300m', { last: stuckWalk, landed: back.layout.landed });
+  assert.equal(stuckOnce.layout.blocked.count, 1);
+  assert.ok(!offered(stuckOnce));
+  const stuckTwice = full('300m', {
+    last: after({ routine: 'navigate', status: 'stuck', fromMetres: 300 }),
+    landed: stuckOnce.layout.landed,
+    blocked: stuckOnce.layout.blocked,
+  });
+  assert.equal(stuckTwice.layout.blocked.count, 2);
+  assert.ok(offered(stuckTwice));
+  assert.match(
+    stuckTwice.layout.description,
+    /walking is stuck, so Teleport is available once more/,
+  );
+  assert.doesNotMatch(stuckTwice.layout.description, /teleport is unavailable for this quest/);
+  const hop3 = after({ routine: 'teleport', status: 'teleported', target: 'a' });
+  const rescued = full('280m', { last: hop3, landed: stuckTwice.layout.landed });
+  assert.equal(rescued.layout.landed.lock, 'closer');
+  assert.equal(rescued.layout.landed.rescued, true);
+  assert.ok(!offered(rescued));
+  // The pass is used: stuck again, teleport stays locked for this quest.
+  const stuckAgain = full('280m', {
+    last: after({ routine: 'navigate', status: 'stuck', fromMetres: 280 }),
+    landed: rescued.layout.landed,
+    blocked: { from: 280, to: 280, count: 2 },
+  });
+  assert.ok(!offered(stuckAgain));
+});
+
+test('a teleport that finds no quest is stated until track_quest runs, teleport stays offered', async () => {
   const profile = validateLayout({
     ...layout,
     joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
@@ -984,16 +1267,17 @@ test('a teleport that finds no quest withholds teleport until track_quest runs',
     await device.act({ type: 'global', name: 'back' }, { expected: await device.observe() });
     const after = await device.observe();
     assert.ok(after.layout.farQuest);
-    assert.ok(after.layout.description.includes('Use Track quest now'));
-    assert.ok(!offered(after).includes('layout-routine.teleport'));
+    assert.ok(after.layout.description.includes('tracked again with Track quest'));
+    // Jev chooses: teleport stays offered next to track_quest.
+    assert.ok(offered(after).includes('layout-routine.teleport'));
     assert.ok(offered(after).includes('layout-routine.track_quest'));
-    // Another routine in between keeps teleport withheld.
+    // Another routine in between keeps the fact.
     await run('navigate');
     assert.ok((await device.observe()).layout.farQuest);
     await run('track_quest');
     const tracked = await device.observe();
     assert.equal(tracked.layout.farQuest, undefined);
-    assert.ok(offered(tracked).includes('layout-routine.teleport'));
+    assert.ok(!tracked.layout.description.includes('tracked again with'));
     await run('track_quest');
     // Forced only while teleport had found no quest: it re-tracks despite a HUD distance.
     assert.deepEqual(forced, [true, undefined]);
@@ -1002,7 +1286,7 @@ test('a teleport that finds no quest withholds teleport until track_quest runs',
   }
 });
 
-test('a blocked navigate sidesteps left then right before suggesting teleport', async () => {
+test('a blocked navigate sidesteps left then right, then states the sidesteps are used up', async () => {
   const profile = validateLayout({
     ...layout,
     screens: {
@@ -1056,11 +1340,269 @@ test('a blocked navigate sidesteps left then right before suggesting teleport', 
       descriptions.push((await device.observe()).layout.description);
     }
     assert.deepEqual(sides, [undefined, 'left', 'right', undefined]);
-    assert.match(descriptions[0], /walks to the left/);
-    assert.match(descriptions[1], /walks to the right/);
-    assert.match(descriptions[2], /teleport instead/);
+    assert.match(descriptions[0], /no progress once .*walks to the left/);
+    assert.match(descriptions[1], /no progress 2 times in a row .*walks to the right/);
+    assert.match(descriptions[2], /3 times in a row .*sidesteps are used up/);
   } finally {
     ROUTINES.navigate = original;
+  }
+});
+
+test('detour routines extend navigate, appear only when blocked, and sidestep their own way', async () => {
+  const base = {
+    id: 'navigate',
+    type: 'navigate',
+    label: 'Navigate',
+    screens: ['world'],
+    marker: { rgb: [250, 230, 0], tolerance: 40 },
+    progressText: 'dist',
+    progressMetres: 5,
+    sidestepMs: 1000,
+    sidestepTries: 2,
+  };
+  const ctl = {
+    joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+    minimap: { x: 60, y: 50, w: 20, h: 20 },
+    camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+  };
+  const profile = validateLayout({
+    ...layout,
+    screens: {
+      ...layout.screens,
+      world: {
+        ...layout.screens.world,
+        texts: [{ id: 'dist', label: 'Quest distance', x: 50, y: 40, w: 60, h: 10, match: 'm$' }],
+      },
+    },
+    ...ctl,
+    routines: [
+      base,
+      { id: 'left', extends: 'navigate', label: 'Go left', detour: 'left', sidestepMs: 3000 },
+      { id: 'right', extends: 'navigate', label: 'Go right', detour: 'right', sidestepMs: 3000 },
+    ],
+  });
+  assert.equal(profile.routines[1].type, 'navigate');
+  assert.equal(profile.routines[1].progressText, 'dist');
+  assert.equal(profile.routines[1].sidestepMs, 3000);
+  assert.throws(
+    () => validateLayout({ ...layout, routines: [{ id: 'x', extends: 'missing' }] }),
+    /extends names no base/,
+  );
+  assert.throws(
+    () =>
+      validateLayout({
+        ...layout,
+        ...ctl,
+        routines: [{ ...base, progressText: undefined, detour: 'up' }],
+      }),
+    /detour must be left or right/,
+  );
+  const world = image(
+    200,
+    100,
+    [0, 0, 0],
+    [{ left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] }],
+  );
+  const recognizer = { recognize: async () => ({ text: '30m', confidence: 0.9 }) };
+  const { device } = fakeGame({ png: () => world, profile, recognizer });
+  device.touch = async () => {};
+  const original = ROUTINES.navigate;
+  const sides = [];
+  ROUTINES.navigate = async (ctx) => {
+    sides.push([ctx.routine?.id, ctx.sidestep]);
+    return { routine: 'navigate', status: 'timeout' };
+  };
+  const ids = (o) => o.elements.map((e) => e.id).filter((id) => id.startsWith('layout-routine'));
+  try {
+    let o = await device.observe();
+    assert.deepEqual(ids(o), ['layout-routine.navigate']);
+    await device.act(
+      { type: 'tap-element', elementId: 'layout-routine.navigate' },
+      { expected: o },
+    );
+    o = await device.observe();
+    assert.deepEqual(ids(o), [
+      'layout-routine.navigate',
+      'layout-routine.left',
+      'layout-routine.right',
+    ]);
+    assert.match(o.layout.description, /Go left first walks left for about 3 seconds/);
+    await device.act({ type: 'tap-element', elementId: 'layout-routine.right' }, { expected: o });
+    o = await device.observe();
+    assert.match(o.layout.description, /no progress 2 times in a row/);
+    await device.act(
+      { type: 'tap-element', elementId: 'layout-routine.navigate' },
+      { expected: o },
+    );
+    assert.deepEqual(
+      sides.map(([, side]) => side),
+      [undefined, 'right', undefined],
+    );
+  } finally {
+    ROUTINES.navigate = original;
+  }
+});
+
+test('a walk blocked routeAfter times in a row runs the route routine instead', async () => {
+  const base = {
+    id: 'navigate',
+    type: 'navigate',
+    label: 'Navigate',
+    screens: ['world'],
+    marker: { rgb: [250, 230, 0], tolerance: 40 },
+    progressText: 'dist',
+    progressMetres: 5,
+    sidestepMs: 1000,
+    routeAfter: 2,
+  };
+  const profile = validateLayout({
+    ...layout,
+    screens: {
+      ...layout.screens,
+      world: {
+        ...layout.screens.world,
+        texts: [{ id: 'dist', label: 'Quest distance', x: 50, y: 40, w: 60, h: 10, match: 'm$' }],
+      },
+    },
+    joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+    minimap: { x: 60, y: 50, w: 20, h: 20 },
+    camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+    routines: [
+      base,
+      { id: 'left', extends: 'navigate', label: 'Go left', detour: 'left', sidestepMs: 3000 },
+      {
+        id: 'route',
+        extends: 'navigate',
+        label: 'Route',
+        route: {
+          bounds: { x: 60, y: 50, w: 20, h: 20 },
+          palette: { walk: [[200, 200, 200]], block: [[40, 40, 40]] },
+          cells: 15,
+          hopMs: 500,
+        },
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      validateLayout({
+        ...layout,
+        joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+        minimap: { x: 60, y: 50, w: 20, h: 20 },
+        camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+        routines: [{ ...base, progressText: undefined, routeAfter: 0 }],
+      }),
+    /routeAfter/,
+  );
+  const world = image(
+    200,
+    100,
+    [0, 0, 0],
+    [{ left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] }],
+  );
+  const recognizer = { recognize: async () => ({ text: '30m', confidence: 0.9 }) };
+  const { device } = fakeGame({ png: () => world, profile, recognizer });
+  device.touch = async () => {};
+  const original = ROUTINES.navigate;
+  const ran = [];
+  let status = 'timeout';
+  ROUTINES.navigate = async (ctx) => {
+    ran.push(ctx.routine.id);
+    return { routine: ctx.routine.id, status };
+  };
+  const walk = async (id) => {
+    const o = await device.observe();
+    return device.act({ type: 'tap-element', elementId: `layout-routine.${id}` }, { expected: o });
+  };
+  try {
+    await walk('navigate');
+    await walk('left');
+    const o = await device.observe();
+    assert.match(o.layout.description, /code makes the next Navigate or Go left run Route instead/);
+    const routed = await walk('navigate');
+    assert.equal(routed.routine.autoRoute, true);
+    status = 'arrived';
+    await walk('left');
+    await walk('navigate');
+    assert.deepEqual(ran, ['navigate', 'left', 'route', 'route', 'navigate']);
+  } finally {
+    ROUTINES.navigate = original;
+  }
+});
+
+test('a navigate with no marker close to the quest runs explore instead', async () => {
+  const base = {
+    id: 'navigate',
+    type: 'navigate',
+    label: 'Navigate',
+    screens: ['world'],
+    marker: { rgb: [250, 230, 0], tolerance: 40 },
+    progressText: 'dist',
+    exploreWithin: 5,
+  };
+  const geometry = {
+    joystick: { anchor: 'bottom-left', x: 30, y: 70, radius: 10 },
+    minimap: { x: 60, y: 50, w: 20, h: 20 },
+    camera: { x: 120, y: 50, degreesPerPixel: 0.5, maxDrag: 40 },
+  };
+  const explore = { id: 'explore', type: 'explore', label: 'Explore', screens: ['world'] };
+  const profile = validateLayout({
+    ...layout,
+    screens: {
+      ...layout.screens,
+      world: {
+        ...layout.screens.world,
+        texts: [{ id: 'dist', label: 'Quest distance', x: 50, y: 40, w: 60, h: 10, match: 'm$' }],
+      },
+    },
+    ...geometry,
+    routines: [base, explore],
+  });
+  assert.throws(
+    () =>
+      validateLayout({ ...layout, ...geometry, routines: [{ ...base, progressText: undefined }] }),
+    /exploreWithin needs an explore routine/,
+  );
+  const world = image(
+    200,
+    100,
+    [0, 0, 0],
+    [{ left: 5, top: 5, right: 15, bottom: 15, rgb: [250, 0, 0] }],
+  );
+  const recognizer = { recognize: async () => ({ text: '4m', confidence: 0.9 }) };
+  const { device } = fakeGame({ png: () => world, profile, recognizer });
+  device.touch = async () => {};
+  const originals = { navigate: ROUTINES.navigate, explore: ROUTINES.explore };
+  const ran = [];
+  let metres = 4;
+  ROUTINES.navigate = async (ctx) => {
+    ran.push(ctx.routine.id);
+    return { routine: ctx.routine.id, status: 'no_marker', questMetres: metres };
+  };
+  ROUTINES.explore = async (ctx) => {
+    ran.push(ctx.routine.id);
+    return { routine: ctx.routine.id, status: 'found' };
+  };
+  const walk = async () => {
+    const o = await device.observe();
+    return device.act(
+      { type: 'tap-element', elementId: 'layout-routine.navigate' },
+      { expected: o },
+    );
+  };
+  try {
+    await walk();
+    const o = await device.observe();
+    assert.match(o.layout.description, /code makes the next Navigate run Explore instead/i);
+    const explored = await walk();
+    assert.equal(explored.routine.autoExplore, true);
+    metres = 12;
+    await walk();
+    await walk();
+    await walk();
+    assert.deepEqual(ran, ['navigate', 'explore', 'navigate', 'navigate', 'navigate']);
+  } finally {
+    Object.assign(ROUTINES, originals);
   }
 });
 
@@ -1119,13 +1661,13 @@ test('a blocked navigate still escalates when the quest distance becomes unreada
       text = '';
     }
     assert.deepEqual(sides, [undefined, 'left', 'right', undefined]);
-    assert.match(descriptions[2], /teleport instead/);
+    assert.match(descriptions[2], /3 times in a row \(30m → 30m\).*sidesteps are used up/);
   } finally {
     ROUTINES.navigate = original;
   }
 });
 
-test('a blocked walk withholds navigate and retries teleport at the next nearest points', async () => {
+test('a blocked walk keeps navigate offered and retries teleport at the next nearest points', async () => {
   const profile = validateLayout({
     ...layout,
     screens: {
@@ -1195,16 +1737,16 @@ test('a blocked walk withholds navigate and retries teleport at the next nearest
     await use('layout-routine.navigate');
     await use('layout-routine.navigate');
     let o = await device.observe();
-    assert.ok(!ids(o).includes('layout-routine.navigate'));
+    assert.ok(ids(o).includes('layout-routine.navigate'));
     assert.ok(ids(o).includes('layout-routine.teleport'));
-    assert.match(o.layout.description, /Navigate is unavailable/);
-    assert.match(o.layout.description, /unreadable → unreadable/);
+    assert.match(o.layout.description, /2 times in a row \(unreadable → unreadable\)/);
+    assert.match(o.layout.description, /Teleport would skip its "quest is close" check\./);
 
     await use('layout-routine.teleport');
     o = await device.observe();
     assert.equal(o.layout.blocked.skip, 2);
     assert.match(o.layout.description, /code tries the next nearest teleport point/);
-    assert.ok(!ids(o).includes('layout-routine.navigate'));
+    assert.match(o.layout.description, /the 2 nearest teleport points already tried/);
 
     await use('layout-routine.teleport');
     o = await device.observe();

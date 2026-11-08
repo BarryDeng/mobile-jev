@@ -6,7 +6,14 @@ const modelAgent = new https.Agent({ keepAlive: true, maxSockets: 2 });
 const loopbackAgent = new http.Agent({ keepAlive: true, maxSockets: 2 });
 
 // Keep the TypeSafe TLS connection warm across decisions. Mobilerun continues to use curl.
-export function pooledRequest({ url, apiKey, method = 'GET', body, timeoutMs = 30_000 }) {
+export function pooledRequest({
+  url,
+  apiKey,
+  method = 'GET',
+  body,
+  headers: extra = {},
+  timeoutMs = 30_000,
+}) {
   const target = new URL(url);
   const loopback = target.protocol === 'http:' && target.hostname === '127.0.0.1';
   if ((target.protocol !== 'https:' && !loopback) || target.username || target.password)
@@ -29,6 +36,7 @@ export function pooledRequest({ url, apiKey, method = 'GET', body, timeoutMs = 3
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           ...(payload ? { 'Content-Length': payload.length } : {}),
+          ...extra,
         },
       },
       (res) => {

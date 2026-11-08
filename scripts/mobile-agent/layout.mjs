@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { bestIconAt, iconTemplate } from './icon-match.mjs';
 import { StaleObservationError, assertFresh } from './device.mjs';
 import { decodePng, encodePng, rgbAt, toRgba } from './png.mjs';
 import {
@@ -44,6 +46,18 @@ function point(entry, name, reference) {
 // A layout profile describes fixed on-screen controls for apps without an accessibility tree.
 export function validateLayout(layout) {
   if (!layout || typeof layout !== 'object') throw new Error('Layout must be a JSON object.');
+  // `extends` copies another routine's settings, so a variant overrides only what differs.
+  if (Array.isArray(layout.routines))
+    layout = {
+      ...layout,
+      routines: layout.routines.map((routine) => {
+        if (routine?.extends === undefined) return routine;
+        const base = layout.routines.find((r) => r.id === routine.extends && !r.extends);
+        if (!base) throw new Error(`routines.${routine.id}.extends names no base routine.`);
+        const { extends: _, ...own } = routine;
+        return { ...base, ...own };
+      }),
+    };
   const { name, packageNames, reference, screens = {}, statusTexts = [], buttons } = layout;
   if (typeof name !== 'string' || !name.trim()) throw new Error('Layout name is required.');
   if (!Array.isArray(packageNames) || !packageNames.length)
@@ -72,6 +86,19 @@ export function validateLayout(layout) {
       point(probe, `screens.${id}.probes[${i}]`, reference);
       if (probe.drift !== undefined && typeof probe.drift !== 'boolean')
         throw new Error(`screens.${id}.probes[${i}].drift must be true or false.`);
+      // A template probe matches an icon image (a PNG next to the layout) centred near the point.
+      if (probe.template !== undefined) {
+        if (typeof probe.template !== 'string' || !probe.template.endsWith('.png') || probe.drift)
+          throw new Error(`screens.${id}.probes[${i}].template must be a PNG file (not drift).`);
+        if (probe.min !== undefined && !(probe.min > 0 && probe.min < 1))
+          throw new Error(`screens.${id}.probes[${i}].min must be a score between 0 and 1.`);
+        if (
+          probe.search !== undefined &&
+          !(Number.isInteger(probe.search) && probe.search >= 0 && probe.search <= 20)
+        )
+          throw new Error(`screens.${id}.probes[${i}].search must be an integer 0–20.`);
+        return;
+      }
       if (
         !Array.isArray(probe.rgb) ||
         probe.rgb.length !== 3 ||
@@ -95,7 +122,15 @@ export function validateLayout(layout) {
     for (const screen of region.screens)
       if (!Object.hasOwn(screens, screen)) throw new Error(`${name} has unknown screen ${screen}.`);
     if (region.match !== undefined) new RegExp(region.match, 'u');
+    if (region.low !== undefined && !(region.low > 0 && region.low < 1))
+      throw new Error(`${name}.low must be a ratio between 0 and 1.`);
   }
+  if (
+    layout.playbook !== undefined &&
+    (!Array.isArray(layout.playbook) ||
+      !layout.playbook.every((tip) => typeof tip === 'string' && tip.trim()))
+  )
+    throw new Error('playbook must be a list of non-empty strings.');
   if (!Array.isArray(buttons) || !buttons.length) throw new Error('Layout needs buttons.');
   const seen = new Set();
   for (const button of buttons) {
@@ -295,6 +330,15 @@ function validateRoutines(layout, buttonIds) {
       button(routine.open, `${name}.open`);
       if (routine.zoomIn !== undefined) button(routine.zoomIn, `${name}.zoomIn`);
       if (routine.zoomButton !== undefined) button(routine.zoomButton, `${name}.zoomButton`);
+      if (routine.maxZoom !== undefined) button(routine.maxZoom, `${name}.maxZoom`);
+      if (routine.zoomOut !== undefined) button(routine.zoomOut, `${name}.zoomOut`);
+      int(routine, 'maxZoomTaps', name, 0, 10);
+      int(routine, 'zoomOutTaps', name, 0, 8);
+      if (
+        routine.track !== undefined &&
+        !layout.routines.some((r) => r.id === routine.track && r.type === 'track_quest')
+      )
+        throw new Error(`${name}.track must name a track_quest routine.`);
       int(routine, 'zoomTaps', name, 0, 8);
       screenList(routine.doneScreens, `${name}.doneScreens`);
       if (!routine.doneScreens?.length) throw new Error(`${name}.doneScreens must list arrivals.`);
@@ -322,8 +366,11 @@ function validateRoutines(layout, buttonIds) {
       const waypoint = (spec, key) => {
         color(spec, key);
         if (!spec.shapes?.length) throw new Error(`${key}.shapes is required.`);
-        for (const shape of spec.shapes)
+        for (const shape of spec.shapes) {
           for (const field of ['pixels', 'w', 'h']) range(shape[field], `${key}.shapes.${field}`);
+          if (shape.ringRadius !== undefined)
+            positive(shape.ringRadius, `${key}.shapes.ringRadius`);
+        }
         const { ring } = spec;
         positive(ring?.radius, `${key}.ring.radius`);
         int(ring, 'white', `${key}.ring`, 0, 255);
@@ -336,7 +383,12 @@ function validateRoutines(layout, buttonIds) {
           const key = `${name}.quest${Array.isArray(routine.quest) ? `[${i}]` : ''}`;
           color(quest, key);
           range(quest.pixels, `${key}.pixels`);
-          range(quest.size, `${key}.size`);
+          // Tall icons (the "!" quest pin) give separate width and height ranges instead of size.
+          if (quest.w !== undefined || quest.h !== undefined) {
+            range(quest.w, `${key}.w`);
+            range(quest.h, `${key}.h`);
+          } else range(quest.size, `${key}.size`);
+          if (quest.stack !== undefined) range(quest.stack, `${key}.stack`);
         });
       } else waypoint(routine.targetWaypoint, `${name}.targetWaypoint`);
       waypoint(routine.waypoint, `${name}.waypoint`);
@@ -345,6 +397,11 @@ function validateRoutines(layout, buttonIds) {
       if (routine.nearRadius !== undefined) positive(routine.nearRadius, `${name}.nearRadius`);
       if (routine.distance !== undefined) textBox(routine.distance, `${name}.distance`, reference);
       if (routine.nearMeters !== undefined) positive(routine.nearMeters, `${name}.nearMeters`);
+      if (
+        routine.questText !== undefined &&
+        !Object.values(screens).some((s) => s.texts?.some((t) => t.id === routine.questText))
+      )
+        throw new Error(`${name}.questText must name a screen text region.`);
       continue;
     }
     if (!joystick || !minimap) throw new Error(`${name} needs layout joystick and minimap.`);
@@ -388,7 +445,40 @@ function validateRoutines(layout, buttonIds) {
     }
     if (routine.type === 'navigate') {
       camera();
+      if (routine.route !== undefined) {
+        const { route } = routine;
+        if (typeof route !== 'object' || route === null)
+          throw new Error(`${name}.route must be an object.`);
+        textBox(route.bounds, `${name}.route.bounds`, reference);
+        const colors = (list, key) => {
+          if (
+            !Array.isArray(list) ||
+            !list.length ||
+            !list.every(
+              (c) =>
+                Array.isArray(c) &&
+                c.length === 3 &&
+                c.every((v) => Number.isInteger(v) && v >= 0 && v <= 255),
+            )
+          )
+            throw new Error(`${name}.route.palette.${key} must list RGB triplets.`);
+        };
+        colors(route.palette?.walk, 'walk');
+        colors(route.palette?.block, 'block');
+        if (route.palette.water !== undefined) colors(route.palette.water, 'water');
+        int(route, 'cells', `${name}.route`, 15, 90);
+        int(route, 'hopMs', `${name}.route`, 100, 5000);
+        int(route, 'holdHops', `${name}.route`, 0, 20);
+      }
       if (routine.revealButton !== undefined) button(routine.revealButton, `${name}.revealButton`);
+      if (routine.jumpButton !== undefined) button(routine.jumpButton, `${name}.jumpButton`);
+      int(routine, 'jumpEvery', name, 500, 60_000);
+      int(routine, 'jumpGapMs', name, 0, 2000);
+      if (routine.jumpEvery && !routine.jumpButton)
+        throw new Error(`${name}.jumpEvery needs jumpButton.`);
+      screenList(routine.airScreens, `${name}.airScreens`);
+      if (routine.airScreens?.some((s) => !routine.screens?.includes(s)))
+        throw new Error(`${name}.airScreens must be among its screens.`);
       int(routine, 'revealTaps', name, 0, 5);
       int(routine, 'revealMs', name, 0, 10_000);
       const { marker } = routine;
@@ -429,6 +519,41 @@ function validateRoutines(layout, buttonIds) {
           )
             throw new Error(`${name}.marker.colors[${i}].hudShare must be in (0, 1].`);
         });
+      }
+      if (marker.icons !== undefined) {
+        const { icons } = marker;
+        const where = `${name}.marker.icons`;
+        if (typeof icons !== 'object' || icons === null)
+          throw new Error(`${where} must be an object.`);
+        textBox(icons.hud, `${where}.hud`, reference);
+        if (icons.distance !== undefined) textBox(icons.distance, `${where}.distance`, reference);
+        const fraction = (value, key) => {
+          if (value !== undefined && !(typeof value === 'number' && value > 0 && value <= 1))
+            throw new Error(`${key} must be in (0, 1].`);
+        };
+        fraction(icons.threshold, `${where}.threshold`);
+        fraction(icons.hudThreshold, `${where}.hudThreshold`);
+        fraction(icons.maxJump, `${where}.maxJump`);
+        for (const key of ['metresPerHalf', 'rim'])
+          if (icons[key] !== undefined) positive(icons[key], `${where}.${key}`);
+        if (
+          typeof icons.kinds !== 'object' ||
+          icons.kinds === null ||
+          !Object.keys(icons.kinds).length
+        )
+          throw new Error(
+            `${where}.kinds must map quest kinds to { hud, minimap } template files.`,
+          );
+        for (const [kind, spec] of Object.entries(icons.kinds)) {
+          for (const key of ['hud', 'minimap'])
+            if (
+              !Array.isArray(spec?.[key]) ||
+              !spec[key].length ||
+              !spec[key].every((file) => typeof file === 'string' && file.endsWith('.png'))
+            )
+              throw new Error(`${where}.kinds.${kind}.${key} must list PNG template files.`);
+          fraction(spec.threshold, `${where}.kinds.${kind}.threshold`);
+        }
       }
       if (marker.area !== undefined) {
         const { area } = marker;
@@ -474,6 +599,11 @@ function validateRoutines(layout, buttonIds) {
         throw new Error(`${name}.climbProgress must be in (0, 1].`);
       for (const key of ['recoverAfter', 'stuckLimit']) int(routine, key, name, 1, 10);
       int(routine, 'minFrames', name, 1, 60);
+      int(routine, 'extendMs', name, 1000, 600_000);
+      int(routine, 'extendMetres', name, 1, 1000);
+      int(routine, 'extendMaxMs', name, 1000, 1_800_000);
+      if (routine.extendMs && !routine.marker?.icons?.distance)
+        throw new Error(`${name}.extendMs needs marker.icons.distance to read the quest distance.`);
       int(routine, 'aimTries', name, 0, 5);
       int(routine, 'aimDeg', name, 1, 45);
       if (routine.steer !== undefined && typeof routine.steer !== 'boolean')
@@ -491,6 +621,31 @@ function validateRoutines(layout, buttonIds) {
       int(routine, 'progressMetres', name, 1, 1000);
       int(routine, 'sidestepMs', name, 100, 10_000);
       int(routine, 'sidestepTries', name, 1, 10);
+      int(routine, 'routeAfter', name, 1, 10);
+      int(routine, 'exploreWithin', name, 1, 100);
+      if (routine.exploreWithin && !routines.some((r) => r.type === 'explore'))
+        throw new Error(`${name}.exploreWithin needs an explore routine.`);
+      if (routine.detour !== undefined && !['left', 'right'].includes(routine.detour))
+        throw new Error(`${name}.detour must be left or right.`);
+      if (routine.detour && !routine.sidestepMs)
+        throw new Error(`${name}.detour needs sidestepMs.`);
+      if (routine.minimapRotates !== undefined && typeof routine.minimapRotates !== 'boolean')
+        throw new Error(`${name}.minimapRotates must be a boolean.`);
+      if (routine.distanceBudget !== undefined) {
+        const budget = routine.distanceBudget;
+        if (
+          typeof budget !== 'object' ||
+          budget === null ||
+          !routine.progressText ||
+          !(budget.metresPerSecond > 0)
+        )
+          throw new Error(
+            `${name}.distanceBudget must be an object with metresPerSecond > 0, used with progressText.`,
+          );
+        int(budget, 'maxMs', `${name}.distanceBudget`, 1000, 600_000);
+        if (budget.margin !== undefined && !(budget.margin >= 1 && budget.margin <= 5))
+          throw new Error(`${name}.distanceBudget.margin must be between 1 and 5.`);
+      }
       if (routine.shift !== undefined) {
         const { shift } = routine;
         if (typeof shift !== 'object' || shift === null)
@@ -504,14 +659,31 @@ function validateRoutines(layout, buttonIds) {
       const { screenMarker } = routine;
       if (screenMarker !== undefined) {
         const key = `${name}.screenMarker`;
-        if (!Array.isArray(screenMarker.rgb) || screenMarker.rgb.length !== 3)
-          throw new Error(`${key}.rgb must be three integers 0–255.`);
-        if (screenMarker.tolerance === undefined) throw new Error(`${key}.tolerance is required.`);
-        for (const r of ['pixels', 'size']) {
-          const v = screenMarker[r];
-          if (!Array.isArray(v) || v.length !== 2 || !(v[0] >= 0 && v[1] >= v[0]))
-            throw new Error(`${key}.${r} must be [min, max].`);
-        }
+        const markerSpec = (spec, at) => {
+          if (!Array.isArray(spec.rgb) || spec.rgb.length !== 3)
+            throw new Error(`${at}.rgb must be three integers 0–255.`);
+          if (spec.tolerance === undefined) throw new Error(`${at}.tolerance is required.`);
+          const ranges = spec.size === undefined ? ['pixels', 'w', 'h'] : ['pixels', 'size'];
+          for (const r of ranges) {
+            const v = spec[r];
+            if (!Array.isArray(v) || v.length !== 2 || !(v[0] >= 0 && v[1] >= v[0]))
+              throw new Error(`${at}.${r} must be [min, max].`);
+          }
+          if (
+            spec.core !== undefined &&
+            !(
+              spec.core.min >= 0 &&
+              spec.core.min <= 255 &&
+              spec.core.share > 0 &&
+              spec.core.share <= 1
+            )
+          )
+            throw new Error(`${at}.core needs min 0–255 and share in (0, 1].`);
+        };
+        if (screenMarker.markers === undefined) markerSpec(screenMarker, key);
+        else if (!Array.isArray(screenMarker.markers) || !screenMarker.markers.length)
+          throw new Error(`${key}.markers must be a non-empty list.`);
+        else screenMarker.markers.forEach((spec, i) => markerSpec(spec, `${key}.markers.${i}`));
         if (!(screenMarker.radius > 0)) throw new Error(`${key}.radius must be positive.`);
         (screenMarker.exclude ?? []).forEach((rect, i) =>
           textBox(rect, `${key}.exclude.${i}`, reference),
@@ -555,7 +727,37 @@ export function loadLayout(path) {
   } catch (error) {
     throw new Error(`Could not read layout ${path}: ${error.message}`);
   }
-  return validateLayout(parsed);
+  return loadIconTemplates(validateLayout(parsed), dirname(path));
+}
+
+// Navigate markers' icon templates are PNG files next to the layout. Decoded templates are
+// attached as non-enumerable `hudTemplates`/`minimapTemplates`, so they stay out of JSON dumps.
+export function loadIconTemplates(layout, dir) {
+  const cache = new Map();
+  const load = (file) => {
+    const full = resolve(dir, file);
+    if (!cache.has(full)) {
+      try {
+        cache.set(full, iconTemplate(decodePng(readFileSync(full))));
+      } catch (error) {
+        throw new Error(`Could not read icon template ${full}: ${error.message}`);
+      }
+    }
+    return cache.get(full);
+  };
+  for (const routine of layout.routines ?? [])
+    for (const spec of Object.values(routine.marker?.icons?.kinds ?? {}))
+      for (const [key, files] of [
+        ['hudTemplates', spec.hud],
+        ['minimapTemplates', spec.minimap],
+      ])
+        if (!spec[key])
+          Object.defineProperty(spec, key, { value: files.map(load), enumerable: false });
+  for (const screen of Object.values(layout.screens ?? {}))
+    for (const probe of screen.probes ?? [])
+      if (probe.template && !probe.icon)
+        Object.defineProperty(probe, 'icon', { value: load(probe.template), enumerable: false });
+  return layout;
 }
 
 // Game HUDs are designed for a canvas of `uiAspect` (width/height): screens wider than that scale
@@ -656,7 +858,26 @@ export function detectScreen(image, screen, layout) {
   const results = {};
   let detected = null;
   const check = (probe, dx, radius) => {
-    const { x, y } = resolvePoint(probe, screen, layout.reference);
+    const { x, y, scale } = resolvePoint(probe, screen, layout.reference);
+    if (probe.template) {
+      if (!probe.icon)
+        throw new Error(`Template ${probe.template} is not loaded (use loadLayout).`);
+      const k = (scale * image.width) / screen.width;
+      const ix = (x * image.width) / screen.width,
+        iy = (y * image.height) / screen.height;
+      const best = bestIconAt(image, Math.round(ix), Math.round(iy), probe.icon, {
+        k,
+        search: Math.round((probe.search ?? 6) * k),
+      });
+      const score = Math.round(best.s * 1000) / 1000;
+      return {
+        x: Math.round(x),
+        y: Math.round(y),
+        template: probe.template,
+        score,
+        matched: score >= (probe.min ?? 0.6),
+      };
+    }
     const observed = sample(image, screen, x + dx, y, radius);
     const tolerance = probe.tolerance ?? 40;
     const matched =
@@ -859,13 +1080,41 @@ function sameRead(a, b) {
   return row[b.length] >= 0.8 * Math.max(a.length, b.length);
 }
 
+// The last navigate found no marker on screen while the HUD put the quest within `exploreWithin`.
+function nearNoMarker(last, layout) {
+  const within = layout.routines?.find(
+    (r) => r.type === 'navigate' && r.exploreWithin,
+  )?.exploreWithin;
+  const result = last?.routine;
+  const routine = result && layout.routines.find((r) => r.id === result.routine);
+  return Boolean(
+    within &&
+    routine?.type === 'navigate' &&
+    result.status === 'no_marker' &&
+    Number.isFinite(result.questMetres) &&
+    result.questMetres <= within,
+  );
+}
+
 // Add code-owned fixed controls to an observation; Jev still chooses whether and which to tap.
 // OCR texts (keyed `button:<id>` or `screen:<id>`) become element text Jev can read.
 export function layoutObservation(
   base,
   image,
   layout,
-  { last, texts = {}, ocr, routines = false, enemyLabels = [], memory, blocked, farQuest } = {},
+  {
+    last,
+    texts = {},
+    ocr,
+    routines = false,
+    enemyLabels = [],
+    memory,
+    blocked,
+    farQuest,
+    downed,
+    healFailed,
+    landed,
+  } = {},
 ) {
   const { screen: detected, results } = detectScreen(image, base.screen, layout);
   let description = detected ? layout.screens[detected].description || detected : undefined;
@@ -896,6 +1145,11 @@ export function layoutObservation(
     const pct = (value) => `${Math.round(value * 100)}%`;
     threat = 'attacked';
     description = `${description} The last ${lastRoutine?.label ?? last.routine.routine} stopped because code measured the active character's health falling (${pct(from)} → ${pct(to)}): enemies are attacking nearby, possibly out of view. Fight back now with combat; its attacks turn towards the nearest enemy.`;
+  }
+  if (detected && nearNoMarker(last, layout)) {
+    const navigate = layout.routines.find((r) => r.type === 'navigate' && r.exploreWithin);
+    const explore = layout.routines.find((r) => r.type === 'explore');
+    description = `${description} The last ${lastRoutine?.label ?? 'walk'} found no quest marker on screen although the quest is only ${last.routine.questMetres}m away: it is hidden nearby. Code makes the next ${navigate.label} run ${explore.label} instead, to look around for it.`;
   }
   if (detected && lastRoutine?.type === 'teleport') {
     const { status, target } = last.routine;
@@ -930,18 +1184,40 @@ export function layoutObservation(
       `The last teleport could not open a teleport panel at ${last.routine.skipped ? 'that' : 'the nearest'} waypoint. Walking to the quest is blocked, so use ${lastRoutine.label} again: code tries the next nearest teleport point.`;
     if (retry || sentence) description = `${description} ${retry || sentence}`;
   }
-  // A teleport that found no quest on the map: the quest is in another region. The hint must
-  // outlast the BACK that closes the map, and teleport is withheld until track_quest re-tracks it.
+  // A teleport that found no quest on the map: the quest is in another region. The fact must
+  // outlast the BACK that closes the map, until track_quest re-tracks it.
   if (last?.routine && lastRoutine && last.routine.status !== 'started') {
     if (lastRoutine.type === 'track_quest') farQuest = undefined;
     else if (lastRoutine.type === 'teleport' && lastRoutine.id !== 'heal')
       farQuest = last.routine.status === 'no_quest' || undefined;
+    // Downed teammates with no revive food stay downed until a Statue of The Seven heals them.
+    if (lastRoutine.type === 'combat' && last.routine.noFood) downed = true;
+    else if (
+      lastRoutine.type === 'teleport' &&
+      lastRoutine.id === 'heal' &&
+      ['teleported', 'unverified'].includes(last.routine.status)
+    )
+      downed = undefined;
+    // Failed heals: the map shows no usable Statue from here, and retrying here fails the same way.
+    if (lastRoutine.type === 'teleport' && healFailed?.source !== last.routine) {
+      const moved = ['teleported', 'unverified'].includes(last.routine.status);
+      if (lastRoutine.id === 'heal')
+        healFailed = moved
+          ? undefined
+          : Object.defineProperty({ count: (healFailed?.count ?? 0) + 1 }, 'source', {
+              value: last.routine,
+            });
+      else if (moved) healFailed = undefined;
+    }
   }
   const tracker = layout.routines?.find((r) => r.type === 'track_quest');
-  // Withheld on every screen: Jev otherwise reopens the map by hand and teleports again.
-  const withhold = tracker && farQuest && detected && lastRoutine?.type !== 'teleport';
-  if (withhold)
-    description = `${description} The last teleport found no tracked quest on the world map: it is in another region, so teleport is unavailable until the quest is tracked again. ${tracker.screens.includes(detected) ? `Use ${tracker.label} now` : `Press BACK, then use ${tracker.label}`}: it tracks the quest again so the game opens the map on it, then teleport from there.`;
+  if (tracker && farQuest && detected && lastRoutine?.type !== 'teleport')
+    description = `${description} Code found no tracked quest on the world map at the last teleport: the quest is in another region, and teleport will not find it until the quest is tracked again with ${tracker.label}.`;
+  const healer = layout.routines?.find((r) => r.type === 'teleport' && r.id === 'heal');
+  if (healer && downed && detected)
+    description = `${description} The last fight left teammates downed and had no food left to revive them; they stay downed until ${healer.label} restores the party.`;
+  if (healer && healFailed && detected && lastRoutine?.id !== 'heal')
+    description = `${description} ${healer.label} failed ${healFailed.count === 1 ? 'once' : `${healFailed.count} times in a row`} from here (no usable Statue of The Seven on the map around you); it fails the same way until a teleport moves you elsewhere.`;
   if (detected && lastRoutine?.type === 'track_quest') {
     const { status, quest } = last.routine;
     const named = quest ? ` (${quest})` : '';
@@ -1002,12 +1278,91 @@ export function layoutObservation(
   // Code-measured walking progress: a navigate that timed out or got stuck without the quest
   // distance shrinking means the path is blocked (water, cliffs, roofs), which Jev cannot see.
   const navigate = (layout.routines ?? []).find((r) => r.type === 'navigate' && r.progressText);
-  // Sidesteps used up while walking is blocked: navigate is withheld so Jev teleports.
-  let walkBlocked = false;
+  // Teleport withheld by the quest lock (see below); a heal trip or a stuck walk opens it once.
+  let withheld = false;
   if (detected && navigate) {
     const read = accepted.get(navigate.progressText);
     const metres =
       read === undefined ? undefined : Number(hudDistance(read).match(/(\d+)\s*m/i)?.[1]);
+    const shown = (m) => (Number.isFinite(m) ? `${m}m` : 'unreadable');
+    const teleporter = (layout.routines ?? []).find(
+      (r) => r.type === 'teleport' && r.id !== 'heal',
+    );
+    // A teleport is a step toward the main quest (the tracked quest title, `questText`). Once
+    // another teleport landed no closer, or walking got closer than the landing, teleporting
+    // again only goes back: code withholds it for as long as the main quest stays the same.
+    let lockNote = '';
+    let rescueNote = '';
+    if (teleporter) {
+      const margin = teleporter.staleMetres ?? 20;
+      const titleId = teleporter.questText;
+      const quest = titleId && (accepted.get(titleId) ?? memory?.get(titleId)?.text);
+      const plain = (value) => value.replace(/[\s\p{P}]/gu, '');
+      if (landed && quest && landed.quest && !sameRead(plain(landed.quest), plain(quest)))
+        landed = undefined;
+      if (landed && quest && !landed.quest) landed.quest = quest;
+      // A healing trip keeps the record, but the statue is elsewhere: one teleport may go back.
+      const healed =
+        lastRoutine?.type === 'teleport' &&
+        lastRoutine.id !== teleporter.id &&
+        ['teleported', 'unverified'].includes(last.routine.status);
+      if (healed) {
+        if (landed && landed.source !== last.routine)
+          landed = Object.defineProperties(
+            { ...landed, away: true },
+            { source: { value: last.routine } },
+          );
+      } else if (
+        lastRoutine?.id === teleporter.id &&
+        ['teleported', 'unverified'].includes(last.routine.status) &&
+        Number.isFinite(metres) &&
+        landed?.source !== last.routine &&
+        landed?.lock
+      ) {
+        // A teleport allowed under the lock (back from healing, or out of a stuck walk) landed:
+        // the lock holds again. The stuck-walk pass is used once per quest.
+        const { away, ...kept } = landed;
+        landed = Object.defineProperties(
+          { ...kept, ...(away ? {} : { rescued: true }) },
+          { source: { value: last.routine } },
+        );
+      } else if (
+        lastRoutine?.id === teleporter.id &&
+        ['teleported', 'unverified'].includes(last.routine.status) &&
+        Number.isFinite(metres) &&
+        landed?.source !== last.routine
+      ) {
+        const stale = Number.isFinite(landed?.metres) && metres >= landed.metres - margin;
+        landed = Object.defineProperties(
+          {
+            metres,
+            ...(quest ? { quest } : {}),
+            ...(stale ? { lock: 'stale', from: landed.metres } : {}),
+          },
+          { source: { value: last.routine } },
+        );
+      } else if (
+        landed &&
+        !landed.lock &&
+        !landed.away &&
+        Number.isFinite(metres) &&
+        metres < landed.metres - margin
+      )
+        Object.assign(landed, { lock: 'closer', to: metres });
+      if (landed?.lock && landed.away)
+        lockNote = ` The last trip healed at a statue away from the tracked quest, so ${teleporter.label} is available once to go back; after it lands, teleporting is unavailable again for this quest.`;
+      else if (landed?.lock) {
+        const why =
+          landed.lock === 'stale'
+            ? `the last ${teleporter.label} landed no closer than the one before (${shown(landed.from)} → ${shown(landed.metres)}): this is already the nearest teleport point`
+            : `walking already brought the quest closer (${shown(landed.metres)} at the teleport landing → ${shown(landed.to)}), so teleporting again would only go back`;
+        const until = landed.quest
+          ? `until the tracked quest "${landed.quest}" changes`
+          : 'until the tracked quest changes';
+        lockNote = ` Code measured that ${why}. ${teleporter.label} is unavailable ${until}; walk to the quest from here, even when it is far.`;
+        rescueNote = ` Teleporting is locked for this quest (${why}), but walking is stuck, so ${teleporter.label} is available once more; after it lands, teleporting is unavailable again ${until}.`;
+      }
+    }
     if (lastRoutine?.type === 'teleport') {
       // Away from the blocked spot: walk again. With no teleport point left, walking is all there is.
       const { status, tried } = last.routine;
@@ -1044,17 +1399,59 @@ export function layoutObservation(
         blocked = mark({ ...blocked, from, to, count });
       }
     }
-    const shown = (m) => (Number.isFinite(m) ? `${m}m` : 'unreadable');
+    // Walking stuck under the lock: one more teleport for this quest, then the lock holds again.
+    const rescue = Boolean(
+      landed?.lock &&
+      !landed.away &&
+      !landed.rescued &&
+      blocked?.count >= (navigate.routeAfter ?? 2),
+    );
+    withheld = Boolean(landed?.lock && !landed.away && !rescue);
+    description = `${description}${rescue ? rescueNote : lockNote}`;
     const tries = navigate.sidestepMs ? (navigate.sidestepTries ?? 2) : 0;
-    if (blocked && blocked.count <= tries)
-      description = `${description} Code measured that the last walk to the quest made no progress (${shown(blocked.from)} → ${shown(blocked.to)}): something is in the way. Use ${navigate.label} again: code first walks to the ${blocked.count % 2 ? 'left' : 'right'} for a moment to get around it, then heads for the marker again.`;
-    else if (blocked) {
+    const detours = (layout.routines ?? []).filter((r) => r.type === 'navigate' && r.detour);
+    if (blocked) {
       const teleport = (layout.routines ?? []).find(
         (r) => r.type === 'teleport' && r.id !== 'heal',
       );
-      walkBlocked = Boolean(teleport && !withhold);
-      description = `${description} Code measured that the last walk to the quest made no progress (${shown(blocked.from)} → ${shown(blocked.to)}): the way is blocked, so teleport instead of navigating again.${walkBlocked ? ` ${navigate.label} is unavailable until a teleport moves you; use ${teleport.label}${blocked.skip ? ': code skips the teleport points already tried' : ''}.` : ''}`;
+      const times = blocked.count === 1 ? 'once' : `${blocked.count} times in a row`;
+      const next = detours.length
+        ? `${detours.map((r) => `${r.label} first walks ${r.detour} for about ${Math.round(r.sidestepMs / 1000)} seconds, then heads for the marker`).join('; ')}; ${navigate.label} heads straight for the marker again.`
+        : blocked.count <= tries
+          ? `The next ${navigate.label} first walks to the ${blocked.count % 2 ? 'left' : 'right'} for a moment to get around it, then heads for the marker again.`
+          : `The next ${navigate.label} heads straight for the marker again; its sidesteps are used up.`;
+      const routed = (layout.routines ?? []).find((r) => r.type === 'navigate' && r.route);
+      const route = !routed
+        ? ''
+        : navigate.routeAfter && blocked.count >= navigate.routeAfter
+          ? ` Because of that, code makes the next ${navigate.label}${detours.length ? ` or ${detours.map((r) => r.label).join(' or ')}` : ''} run ${routed.label} instead: it plans a way along the open ground shown on the minimap.`
+          : ` ${routed.label} plans a way along the open ground shown on the minimap instead of heading straight for the marker.`;
+      const skipped =
+        teleport && !withheld
+          ? ` ${teleport.label} would skip its "quest is close" check${blocked.skip ? ` and the ${blocked.skip} nearest teleport point${blocked.skip === 1 ? '' : 's'} already tried` : ''}.`
+          : '';
+      description = `${description} Code measured that walking to the quest made no progress ${times} (${shown(blocked.from)} → ${shown(blocked.to)}): something is in the way. ${next}${route}${skipped}`;
     }
+    // Code compares the distance with teleport's near threshold, so Jev reads a named bucket.
+    const far = (layout.routines ?? []).find(
+      (r) => r.type === 'teleport' && r.id !== 'heal' && r.nearMeters,
+    )?.nearMeters;
+    if (far && regions.some((r) => r.id === navigate.progressText)) {
+      const where = read && hudDistance(read) !== read ? ` (${read.replace(/\s/gu, '')})` : '';
+      description = `${description} ${
+        Number.isFinite(metres)
+          ? `Code read the tracked quest as ${metres > far ? `far away: ${metres}m, more than ${far}m${withheld ? ' (teleport is unavailable for this quest: keep walking)' : ''}` : `close: ${metres}m, ${far}m or less`}${where}.`
+          : 'Code read no quest distance on the HUD.'
+      }`;
+    }
+  }
+  // Status texts such as health "743/7301": code compares the ratio and names it low.
+  for (const region of layout.statusTexts ?? []) {
+    const match = region.low !== undefined && accepted.get(region.id)?.match(/(\d+)\s*\/\s*(\d+)/);
+    if (!match || !(Number(match[2]) > 0)) continue;
+    const ratio = Number(match[1]) / Number(match[2]);
+    if (ratio <= region.low)
+      description = `${description} Code read ${region.label} as low: ${match[1]}/${match[2]}, ${Math.round(region.low * 100)}% or less.`;
   }
   const elements = [
     ...base.elements,
@@ -1078,8 +1475,9 @@ export function layoutObservation(
         }),
     ),
     ...(routines ? layoutRoutines(layout, base.screen, detected) : [])
-      .filter(({ routine }) => !(withhold && routine.type === 'teleport' && routine.id !== 'heal'))
-      .filter(({ routine }) => !(walkBlocked && routine.type === 'navigate'))
+      // Detours only make sense once code measured the walk as blocked.
+      .filter(({ routine }) => !routine.detour || blocked)
+      .filter(({ routine }) => !(withheld && routine.type === 'teleport' && routine.id !== 'heal'))
       .map(({ routine, bounds }) =>
         virtualElement(`layout-routine.${routine.id}`, {
           label: routine.description ? `${routine.label}: ${routine.description}` : routine.label,
@@ -1111,6 +1509,7 @@ export function layoutObservation(
       profile: visual.profile,
       screen: visual.screen,
       description,
+      ...(detected && layout.playbook?.length ? { playbook: layout.playbook } : {}),
       signature: createHash('sha256')
         .update(
           JSON.stringify([
@@ -1122,6 +1521,9 @@ export function layoutObservation(
       ...(previousAction ? { previousAction } : {}),
       ...(blocked ? { blocked } : {}),
       ...(farQuest ? { farQuest } : {}),
+      ...(downed ? { downed } : {}),
+      ...(healFailed ? { healFailed } : {}),
+      ...(landed ? { landed } : {}),
       ...(threat ? { threat } : {}),
       ...(ocr ? { ocr } : {}),
     },
@@ -1161,6 +1563,9 @@ export function withLayout(device, layout, { recognizer } = {}) {
   let last;
   let blocked;
   let farQuest;
+  let downed;
+  let healFailed;
+  let landed;
   const memory = new Map();
   // Devices may offer faster decoded frames (ADB_CAPTURE=raw); otherwise decode the PNG.
   const capture = async () => {
@@ -1220,10 +1625,16 @@ export function withLayout(device, layout, { recognizer } = {}) {
       memory,
       blocked,
       farQuest,
+      downed,
+      healFailed,
+      landed,
       routines: typeof device.touch === 'function',
     });
     blocked = observation.layout.blocked;
     farQuest = observation.layout.farQuest;
+    downed = observation.layout.downed;
+    healFailed = observation.layout.healFailed;
+    landed = observation.layout.landed;
     return observation;
   };
   const observeOnce = async () => {
@@ -1308,9 +1719,26 @@ export function withLayout(device, layout, { recognizer } = {}) {
     const current = await device.observe();
     if (!options.expected) throw new Error('Routines require their original observation.');
     assertFresh(current, options.expected, action, options.maxAgeMs);
-    const routine = layout.routines.find((r) => `layout-routine.${r.id}` === action.elementId);
+    let routine = layout.routines.find((r) => `layout-routine.${r.id}` === action.elementId);
     if (!routine || typeof device.touch !== 'function')
       throw new Error('Routine is not available.');
+    // Walks blocked `routeAfter` times in a row: code plans a minimap route instead of a straight walk.
+    const autoRoute =
+      routine.type === 'navigate' &&
+      !routine.route &&
+      routine.routeAfter &&
+      blocked &&
+      blocked.count >= routine.routeAfter
+        ? layout.routines.find((r) => r.type === 'navigate' && r.route)
+        : undefined;
+    if (autoRoute) routine = autoRoute;
+    // The quest is close but its marker is off screen: walking at it again does nothing, so code
+    // explores nearby for the talk prompt instead.
+    const autoExplore =
+      !autoRoute && routine.type === 'navigate' && nearNoMarker(last, layout)
+        ? layout.routines.find((r) => r.type === 'explore')
+        : undefined;
+    if (autoExplore) routine = autoExplore;
     const dims = current.screen;
     last = { action, screen, routine: { routine: routine.id, status: 'started' } };
     const healthBar = layout.healthBar && {
@@ -1324,6 +1752,13 @@ export function withLayout(device, layout, { recognizer } = {}) {
       routine.progressText &&
       options.expected.elements?.find((e) => e.id === `layout-text.${routine.progressText}`)?.text;
     const fromMetres = progress ? Number(hudDistance(progress).match(/(\d+)\s*m/i)?.[1]) : NaN;
+    // A far quest needs a longer walk: the time limit grows with the HUD distance at the start.
+    const budget = routine.distanceBudget;
+    if (budget && Number.isFinite(fromMetres)) {
+      const ms = Math.round((fromMetres / budget.metresPerSecond) * (budget.margin ?? 1.2) * 1000);
+      const maxMs = Math.min(Math.max(ms, routine.maxMs ?? 0), budget.maxMs ?? Infinity);
+      if (maxMs > (routine.maxMs ?? 0)) routine = { ...routine, maxMs };
+    }
     // The HUD says the quest is above (原神: 高处): climbing is the way there, not an obstacle.
     const above = Boolean(progress && routine.aboveText && progress.includes(routine.aboveText));
     // A walk measured as blocked lets teleport skip its "quest is close, walk instead" checks.
@@ -1331,16 +1766,22 @@ export function withLayout(device, layout, { recognizer } = {}) {
     const force =
       (routine.type === 'teleport' && Boolean(blocked)) ||
       (routine.type === 'track_quest' && Boolean(farQuest));
-    // A walk measured as blocked: the next navigate first sidesteps, alternating left and right.
+    // A walk measured as blocked: Jev picks a detour side when the layout offers detours;
+    // otherwise the next navigate first sidesteps, alternating left and right.
+    const hasDetours = layout.routines.some((r) => r.type === 'navigate' && r.detour);
     const sidestep =
-      routine.type === 'navigate' &&
-      routine.sidestepMs &&
-      blocked &&
-      blocked.count <= (routine.sidestepTries ?? 2)
-        ? blocked.count % 2
-          ? 'left'
-          : 'right'
-        : undefined;
+      routine.type !== 'navigate'
+        ? undefined
+        : routine.detour
+          ? routine.detour
+          : !hasDetours &&
+              routine.sidestepMs &&
+              blocked &&
+              blocked.count <= (routine.sidestepTries ?? 2)
+            ? blocked.count % 2
+              ? 'left'
+              : 'right'
+            : undefined;
     const skip = routine.type === 'teleport' && blocked ? (blocked.skip ?? 0) : 0;
     const joystick = layout.joystick && resolvePoint(layout.joystick, dims, layout.reference);
     // Debug viewers see which button each routine touch pressed (combat: skill, attack, burst...).
@@ -1434,11 +1875,19 @@ export function withLayout(device, layout, { recognizer } = {}) {
       now: () => performance.now(),
       random: device.random ?? Math.random,
       ...(force ? { force } : {}),
+      ...(routine.track
+        ? { track: layout.routines.find((r) => r.id === routine.track && r.type === 'track_quest') }
+        : {}),
     });
     last = {
       action,
       screen,
-      routine: Number.isFinite(fromMetres) ? { ...result, fromMetres } : result,
+      routine: {
+        ...result,
+        ...(Number.isFinite(fromMetres) ? { fromMetres } : {}),
+        ...(autoRoute ? { autoRoute: true } : {}),
+        ...(autoExplore ? { autoExplore: true } : {}),
+      },
     };
     debug?.event({ type: 'routine_end', ...last.routine });
     return { routine: last.routine };

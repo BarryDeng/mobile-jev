@@ -184,6 +184,54 @@ test('continuous agent reopens its game client instead of letting the model use 
   assert.equal(actions.filter((a) => a === 'game').length, 1);
 });
 
+test('continuous agent leaves healing and cycle changes to the model', async () => {
+  const actions = [];
+  let n = 0;
+  const device = {
+    assertReady: async () => {},
+    listApps: async () => [],
+    observe: async () => ({
+      ...observation(
+        'world',
+        [
+          element('layout-text.active_health', '200 / 1000'),
+          element('layout-routine.heal'),
+          element('layout-routine.navigate'),
+          element('layout-routine.explore'),
+        ],
+        n,
+      ),
+      layout: { screen: 'world', signature: `layout-${n++}`, downed: true },
+    }),
+    act: async (action) => {
+      actions.push(action.elementId);
+      return { routine: { routine: 'navigate', status: 'arrived' } };
+    },
+  };
+  let modelCalls = 0;
+  await runContinuousAgent({
+    device,
+    policy: {
+      decide: async () => {
+        modelCalls++;
+        return {
+          status: 'action',
+          choice: 'tap_navigate',
+          action: { type: 'tap-element', elementId: 'layout-routine.navigate' },
+        };
+      },
+    },
+    goal: 'Play',
+    execute: true,
+    maxSteps: 4,
+    cycleSteps: 2,
+    settleTimeoutMs: 0,
+  });
+  // One extra call per cycle ends it at the step limit.
+  assert.equal(modelCalls, 6);
+  assert.deepEqual(actions, Array(4).fill('layout-routine.navigate'));
+});
+
 test('continuous agent turns model completion into activity and runs to its total step limit', async () => {
   let frame = 0;
   const actions = [];

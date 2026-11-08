@@ -95,6 +95,43 @@ test('a TypeSafe-compatible gateway base URL receives the System One request', a
   assert.throws(() => new TypeSafePolicy({ baseUrl: 'openrouter.ai' }), /absolute https/);
 });
 
+test('images attach a downscaled PNG frame as an asset referenced from state', async () => {
+  const observation = observe();
+  const pixels = Buffer.alloc(2000 * 1000 * 3, 90);
+  Object.defineProperty(observation, 'frame', {
+    value: { image: { width: 2000, height: 1000, channels: 3, pixels } },
+  });
+  let seen;
+  const policy = new TypeSafePolicy({
+    images: true,
+    imageWidth: 800,
+    request: async (request) => {
+      seen = request;
+      return Buffer.from(
+        JSON.stringify({
+          answers: { operation: answer(request.body.questions.operation.criteria, 'DONE') },
+        }),
+      );
+    },
+  });
+  const decision = await policy.decide({ goal: 'Done', observation });
+  const ref = seen.body.state.screenshot;
+  assert.deepEqual(Object.keys(seen.body.assets), [ref]);
+  assert.equal(seen.body.assets[ref].format, 'png');
+  const png = Buffer.from(seen.body.assets[ref].data_base64, 'base64');
+  assert.equal(png.readUInt32BE(16), 800);
+  assert.equal(png.readUInt32BE(20), 400);
+  assert.equal(seen.headers['TypeSafe-Danger-Zone-Images'], 'true');
+  assert.match(seen.body.questions.operation.instructions.rules, /`screenshot`/);
+  assert.equal(decision.imageBytes, png.length);
+  await new TypeSafePolicy({ images: false, request: policy.request }).decide({
+    goal: 'Done',
+    observation,
+  });
+  assert.equal(seen.body.assets, undefined);
+  assert.equal(seen.headers, undefined);
+});
+
 test('scroll choice consumes its region only; single-candidate target is supported', async () => {
   const policy = new TypeSafePolicy({
     request: async ({ body }) =>

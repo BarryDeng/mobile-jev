@@ -1,4 +1,6 @@
 import { rgbAt } from './png.mjs';
+import { bestIconAt, findIcons } from './icon-match.mjs';
+import { BLOCK, minimapGrid, planRoute, rayClear } from './minimap-path.mjs';
 
 // Routines are code-owned, bounded input loops for things Jev cannot drive step by step (a held
 // joystick). Jev only chooses to start one; every routine ends with a status and evidence.
@@ -907,10 +909,13 @@ export function markerBearing(image, screen, minimap, marker, reach) {
   const inRange = (p, lo, hi) => lo && hi && p.every((v, i) => v >= lo[i] && v <= hi[i]);
   const near_ = (p, c, t) => p.every((v, i) => Math.abs(v - c[i]) <= t);
   // `colors`: other quest kinds' markers (e.g. purple story quests) besides the main colour.
+  // A `hud` colour is only passed in while the tracked quest's HUD icon shows it.
+  const tracked = (p) => colors.some((c) => c.hud && near_(p, c.rgb, c.tolerance ?? 30));
   const matches = (p) =>
     (rgb && near_(p, rgb, tolerance)) ||
     inRange(p, min, max) ||
     colors.some((c) => near_(p, c.rgb, c.tolerance ?? 30));
+  const trackedKeys = new Set();
   // A quest-area ring is translucent: over water it turns pale (B ~110) and misses the icon
   // colour. Its own range only feeds the circle fit, whose shape test rejects stray terrain.
   const ringOnly = marker.area?.min && marker.area?.max;
@@ -920,9 +925,7 @@ export function markerBearing(image, screen, minimap, marker, reach) {
     cy = (minimap.top + minimap.bottom) / 2,
     half = (minimap.right - minimap.left) / 2,
     max_ = half * reach;
-  let x0 = 0,
-    y0 = 0,
-    n = 0;
+  let n = 0;
   const points = [],
     ringPoints = [];
   for (
@@ -946,10 +949,9 @@ export function markerBearing(image, screen, minimap, marker, reach) {
           ringPoints.push([x, y]);
         continue;
       }
-      x0 += x;
-      y0 += y;
       n++;
       points.push([x, y]);
+      if (tracked(p)) trackedKeys.add(`${x},${y}`);
     }
   // A quest area is drawn as a ring, and the view cone and player arrow hide parts of it, which
   // drags a plain centroid around as the camera turns; a fitted circle keeps the true centre.
@@ -981,10 +983,75 @@ export function markerBearing(image, screen, minimap, marker, reach) {
       area: { radius: ring.radius / half },
     };
   }
+  if (marker.track) return trackedIcon(image, cx, cy, half, max_, sx, sy, marker.track);
   if (n < minPixels) return null;
-  const dx = x0 / n - cx,
-    dy = y0 / n - cy;
-  return { deg: angleOf(dx, dy), r: Math.hypot(dx, dy) / half, pixels: n };
+  const icon = iconPoints(points, trackedKeys, half * (marker.iconMerge ?? 0.15));
+  if (icon.length < minPixels) return null;
+  const dx = icon.reduce((s, p) => s + p[0], 0) / icon.length - cx,
+    dy = icon.reduce((s, p) => s + p[1], 0) / icon.length - cy;
+  return { deg: angleOf(dx, dy), r: Math.hypot(dx, dy) / half, pixels: icon.length };
+}
+
+// The tracked quest's icon by shape (`track.templates`, the kind the HUD icon showed). Untracked
+// quests of the same kind look identical on the minimap, so with several on screen the one
+// nearest the last pick wins (icons move smoothly as the player walks), else the one whose
+// distance best matches the HUD's (`track.r`, half-widths; icons further away sit on the rim
+// at `track.rim`), else the best match. The pick is remembered in `track.last`.
+function trackedIcon(image, cx, cy, half, reach, sx, sy, track) {
+  const k = track.k ?? 1;
+  const icons = findIcons(
+    image,
+    { cx: cx * sx, cy: cy * sy, radius: reach * sx },
+    track.templates,
+    { k, threshold: track.threshold ?? 0.65 },
+  )
+    // Another kind's icon can pass this kind's threshold (a bright blue diamond scores ~0.7 as
+    // purple); it is that kind's when its own template fits better.
+    .filter((icon) =>
+      (track.others ?? []).every(
+        (t) => bestIconAt(image, icon.x, icon.y, t, { k, search: 2, maxColor: 60 }).s < icon.s,
+      ),
+    )
+    .map((icon) => ({
+      ...icon,
+      x: icon.x / sx,
+      y: icon.y / sy,
+      r: Math.hypot(icon.x / sx - cx, icon.y / sy - cy) / half,
+    }));
+  if (!icons.length) return null;
+  const by = (cost) => icons.reduce((a, b) => (cost(b) < cost(a) ? b : a));
+  const last = track.last;
+  let pick = last && by((i) => Math.hypot(i.x - last.x, i.y - last.y));
+  if (pick && Math.hypot(pick.x - last.x, pick.y - last.y) > half * (track.maxJump ?? 0.3))
+    pick = null;
+  if (!pick && icons.length > 1 && Number.isFinite(track.r)) {
+    const want = Math.min(track.r, track.rim ?? 1.2);
+    pick = by((i) => Math.abs(i.r - want));
+  }
+  pick ??= icons[0];
+  track.last = { x: pick.x, y: pick.y };
+  return {
+    deg: angleOf(pick.x - cx, pick.y - cy),
+    r: pick.r,
+    pixels: Math.round(pick.s * 100),
+    icon: { kind: track.kind, score: +pick.s.toFixed(3), candidates: icons.length },
+  };
+}
+
+// The quest icon among the matched pixels: stray terrain specks of a similar colour would drag
+// a plain centroid between them. Prefer the blob holding the tracked quest's own colour, else
+// the largest blob, then add fragments within `merge` px of it (a translucent icon can split).
+function iconPoints(points, trackedKeys, merge) {
+  const groups = clusters(points, 4).map((g) => ({
+    g,
+    x: g.reduce((s, p) => s + p[0], 0) / g.length,
+    y: g.reduce((s, p) => s + p[1], 0) / g.length,
+    tracked: g.filter(([x, y]) => trackedKeys.has(`${x},${y}`)).length,
+  }));
+  const best = groups.sort((a, b) => b.tracked - a.tracked || b.g.length - a.g.length)[0];
+  return groups
+    .filter((c) => c === best || Math.hypot(c.x - best.x, c.y - best.y) <= merge)
+    .flatMap((c) => c.g);
 }
 
 // Least-squares circle (x² + y² + Dx + Ey + F = 0) through marker pixels, accepted as a quest
@@ -1186,7 +1253,9 @@ export async function navigate(ctx) {
   const { routine, joystick, minimap, camera, screen, frame, touch, sleep, now } = ctx;
   const { counts, started, result: finish } = tracker(routine, now);
   Object.assign(counts, { drags: 0, segments: 0, stuck: 0, recoveries: 0, motion: [] });
-  const maxMs = routine.maxMs ?? 30_000;
+  let maxMs = routine.maxMs ?? 30_000;
+  let lastMetres;
+  let lastJump = started;
   const threshold = routine.motionThreshold ?? 1.5;
   const stuckLimit = routine.stuckLimit ?? 3;
   const allowed = new Set(routine.screens);
@@ -1227,18 +1296,45 @@ export async function navigate(ctx) {
   let markerColor = routine.marker;
   let coneFrozen = 0;
   const frozenLimit = routine.cone?.frozenTurns ?? 2;
+  // A camera-up minimap (原神 锁定玩家视角) turns with the camera: the view always points up,
+  // so there is no cone to read and a marker's bearing is the turn still needed.
+  const rotates = Boolean(routine.minimapRotates);
+  const readCone = (image) =>
+    rotates ? { deg: 90, contrast: Infinity } : coneHeading(image, screen, minimap, routine.cone);
   const screenMarker = routine.screenMarker;
   const scale = ctx.hudScale ?? 1;
   const degPerPx = (screenMarker?.viewDegreesPerPixel ?? 0.035) / scale;
   const sceneExclude = (screenMarker?.exclude ?? []).map((rect) => ctx.rect(rect)).filter(Boolean);
-  // The quest diamond floating over the target in the 3D view, nearest the screen's centre line.
+  // The quest icon floating over the target in the 3D view, nearest the screen's centre line.
+  // `screenMarker.markers` lists one colour/shape spec per quest kind (gold diamond, blue "!").
   const sceneMarker = (image) =>
-    mapQuestMarkers(image, screen, screenMarker, sceneExclude, scale).sort(
+    mapQuestMarkers(image, screen, screenMarker.markers ?? screenMarker, sceneExclude, scale).sort(
       (a, b) => Math.abs(a.x - screen.width / 2) - Math.abs(b.x - screen.width / 2),
     )[0] ?? null;
   const fullScreen = { left: 0, top: 0, right: screen.width, bottom: screen.height };
   const areaMarker = (image) =>
     markerBearing(image, screen, minimap, markerColor, routine.markerReach ?? 1.35);
+  // A stop screen whose prompt only offers furniture (`ignorePrompt.match`, e.g. 坐下 on a stool)
+  // is not the quest's NPC: keep walking instead of reporting it.
+  const furniture = async (f) => {
+    const p = routine.ignorePrompt;
+    if (!p || !ctx.readText || !routine.stopScreens?.includes(f.screen)) return false;
+    const b = ctx.rect(p);
+    const sx = f.image.width / screen.width,
+      sy = f.image.height / screen.height;
+    const text = (
+      (await ctx.readText(f.image, {
+        left: Math.max(0, Math.round(b.left * sx)),
+        top: Math.max(0, Math.round(b.top * sy)),
+        right: Math.min(f.image.width, Math.round(b.right * sx)),
+        bottom: Math.min(f.image.height, Math.round(b.bottom * sy)),
+      })) ?? ''
+    ).trim();
+    if (!new RegExp(p.match).test(text)) return false;
+    counts.ignoredPrompts = (counts.ignoredPrompts ?? 0) + 1;
+    counts.ignoredPrompt = text;
+    return true;
+  };
   // Inside a quest area: stand still for `areaWaitMs` in case the quest reacts (a dialogue,
   // enemies, a pickup prompt, the area going away). Without any change, walk circles inside the
   // ring for `areaCircleMs` (the stick tilted along the ring's tangent, leaning inward near the
@@ -1253,7 +1349,7 @@ export async function navigate(ctx) {
       current = next;
       if (routine.damageStop && next.damaged)
         return result('attacked', { screen: next.screen, health: next.damaged });
-      if (next.screen !== home && !routine.recover?.[next.screen])
+      if (next.screen !== home && !routine.recover?.[next.screen] && !(await furniture(next)))
         return result('arrived', { screen: next.screen, area: 'changed' });
       if (!routine.recover?.[next.screen] && !areaMarker(next.image)?.area)
         return result('arrived', { screen: next.screen, area: 'changed' });
@@ -1278,7 +1374,7 @@ export async function navigate(ctx) {
         const ring = areaMarker(current.image);
         const radius = ring?.area?.radius;
         if (ring && radius) {
-          const cone = coneHeading(current.image, screen, minimap, routine.cone);
+          const cone = readCone(current.image);
           const lean = ring.r > radius ? 80 : ring.r > radius * 0.6 ? 40 : 0;
           const want = ring.deg - side * (90 - lean);
           counts.circles++;
@@ -1330,11 +1426,141 @@ export async function navigate(ctx) {
       colors: markerColor.colors.filter((c) => !c.hud || shows(current.image, c)),
     };
   }
+  // `marker.icons`: which quest kind is tracked, from the shape of the HUD icon beside the
+  // quest title; the minimap is then searched for that kind's icon by shape (`trackedIcon`).
+  const hudMetres = async (image) => {
+    const icons = markerColor?.icons;
+    if (!icons?.distance || !ctx.readText || !image) return undefined;
+    const sx = image.width / screen.width,
+      sy = image.height / screen.height;
+    const b = ctx.rect(icons.distance);
+    const text = await ctx.readText(image, {
+      left: Math.round(b.left * sx),
+      top: Math.round(b.top * sy),
+      right: Math.round(b.right * sx),
+      bottom: Math.round(b.bottom * sy),
+    });
+    const metres = Number(hudDistance(text).match(/(\d+)\s*m/)?.[1]);
+    return Number.isFinite(metres) ? metres : undefined;
+  };
+  const iconKinds = markerColor?.icons?.kinds;
+  if (iconKinds && current.image) {
+    const { icons } = markerColor;
+    const image = current.image;
+    const sx = image.width / screen.width,
+      sy = image.height / screen.height;
+    const k = scale * sx;
+    const hud = ctx.rect(icons.hud);
+    let best = { s: 0 };
+    for (const [kind, spec] of Object.entries(iconKinds))
+      for (const t of spec.hudTemplates ?? []) {
+        const hit = bestIconAt(
+          image,
+          ((hud.left + hud.right) / 2) * sx,
+          ((hud.top + hud.bottom) / 2) * sy,
+          t,
+          { k, search: Math.ceil(3 * k) },
+        );
+        if (hit.s > best.s) best = { s: hit.s, kind };
+      }
+    counts.hudIcon = best.kind ? { kind: best.kind, score: +best.s.toFixed(3) } : null;
+    const spec = best.kind && iconKinds[best.kind];
+    if (best.s >= (icons.hudThreshold ?? 0.85) && spec.minimapTemplates?.length) {
+      let r;
+      if (icons.metresPerHalf) {
+        const metres = await hudMetres(image);
+        if (metres !== undefined) {
+          counts.questMetres = metres;
+          r = metres / icons.metresPerHalf;
+        }
+      }
+      markerColor = {
+        ...markerColor,
+        track: {
+          kind: best.kind,
+          templates: spec.minimapTemplates,
+          others: Object.entries(iconKinds)
+            .filter(([kind]) => kind !== best.kind)
+            .flatMap(([, s]) => s.minimapTemplates ?? []),
+          threshold: spec.threshold ?? icons.threshold,
+          k,
+          r,
+          rim: icons.rim,
+          maxJump: icons.maxJump,
+        },
+      };
+    }
+  }
+  if (routine.extendMs) lastMetres = counts.questMetres ?? (await hudMetres(current.image));
   let unknown = 0,
     recovering = 0,
     turned = false,
     climb = null,
     climbImage = null;
+  // `route`: plan a way along the open ground on the minimap instead of heading straight for the
+  // marker, and tilt the stick toward it without turning the camera. The camera heading comes
+  // from the cone at first, then from which way the minimap scrolled for the last stick angle.
+  let routeHeading = null,
+    routeTilt = null,
+    routePlan = null;
+  // `route.holdHops`: keep a planned bearing for that many hops while the way along it stays
+  // clear, so one frame's misread minimap does not swing the route back and forth.
+  let routeHold = null;
+  const avoid = { cells: [], ttl: 0 };
+  // `jumpEvery`: a double jump now and then opens the wind glider 风之翼 when the ground drops
+  // away, so a fall off a cliff becomes a glide. Not while airborne (`airScreens`), where a
+  // jump would close the glider again.
+  const hopJump = async () => {
+    if (
+      !routine.jumpEvery ||
+      routine.airScreens?.includes(current.screen) ||
+      now() - lastJump < routine.jumpEvery
+    )
+      return;
+    lastJump = now();
+    counts.jumps = (counts.jumps ?? 0) + 1;
+    await tapButton(routine.jumpButton);
+    await sleep(routine.jumpGapMs ?? 300);
+    await tapButton(routine.jumpButton);
+  };
+  const routeHop = async (marker, cone) => {
+    const route = routine.route;
+    const bounds = ctx.rect(route.bounds);
+    const grid = minimapGrid(current.image, screen, bounds, route.palette, route.cells ?? 45);
+    if (avoid.ttl > 0) for (const { x, y } of avoid.cells) grid.grid[y * grid.cells + x] = BLOCK;
+    // The marker's distance is in minimap half-widths; the grid may span a wider circle.
+    const ratio = (minimap.right - minimap.left) / (bounds.right - bounds.left);
+    const goal = {
+      deg: marker.deg,
+      r: marker.r >= (route.edge ?? 0.95) ? 3 : marker.r * ratio,
+    };
+    const plan = route.plan ?? {};
+    let want;
+    if (
+      routeHold &&
+      routeHold.hops < (route.holdHops ?? 0) &&
+      rayClear(grid, routeHold.bearing, plan.lookahead ?? 8, plan)
+    ) {
+      routeHold.hops++;
+      counts.held = (counts.held ?? 0) + 1;
+      want = routeHold.bearing;
+    } else {
+      routePlan = planRoute(grid, goal, plan);
+      counts.routes = (counts.routes ?? 0) + 1;
+      if (routePlan.bearing !== null && !routePlan.direct)
+        counts.detoured = (counts.detoured ?? 0) + 1;
+      if (routePlan.bearing === null) counts.noRoute = (counts.noRoute ?? 0) + 1;
+      routeHold = routePlan.bearing === null ? null : { bearing: routePlan.bearing, hops: 1 };
+      want = routePlan.bearing ?? marker.deg;
+    }
+    if (routeHeading === null && cone.contrast >= (routine.cone?.minContrast ?? 12))
+      routeHeading = cone.deg;
+    // No heading yet: run forward once so the scroll tells where the camera faces.
+    routeTilt = routeHeading === null ? 0 : wrapDeg(want - routeHeading);
+    await press(routine.deflection ?? 1, routeTilt);
+    await hopJump();
+    await sleep(route.hopMs ?? 700);
+  };
   try {
     for (;;) {
       if (current.screen === null) {
@@ -1366,9 +1592,7 @@ export async function navigate(ctx) {
           // Climbing a wall that faces well away from the marker (often after a detour turn):
           // let go at once and face the marker again instead of climbing on.
           const cone =
-            climbMarker && routine.climbOffDeg !== undefined
-              ? coneHeading(current.image, screen, minimap, routine.cone)
-              : null;
+            climbMarker && routine.climbOffDeg !== undefined ? readCone(current.image) : null;
           const off = cone ? wrapDeg(climbMarker.deg - cone.deg) : 0;
           const longClimb =
             !ctx.above &&
@@ -1413,7 +1637,11 @@ export async function navigate(ctx) {
           climb = null;
           if (!allowed.has(current.screen))
             return result('interrupted', { screen: current.screen });
-          if (counts.segments > 0 && routine.stopScreens?.includes(current.screen))
+          if (
+            counts.segments > 0 &&
+            routine.stopScreens?.includes(current.screen) &&
+            !(await furniture(current))
+          )
             return result('found', { screen: current.screen });
           // Losing health on the way means enemies are attacking: stop walking and fight.
           if (routine.damageStop && current.damaged)
@@ -1425,10 +1653,11 @@ export async function navigate(ctx) {
             markerColor,
             routine.markerReach ?? 1.35,
           );
-          // Close to the marker the minimap bearing is noise; steer by the quest diamond in view.
-          // A quest area has no diamond; its fitted ring centre stays reliable all the way in.
+          // Close to the marker the minimap bearing is noise; steer by the quest icon in view.
+          // A real quest area has no icon and falls back to its fitted ring centre; an icon in
+          // view wins even inside a ring (a misread ring once ended walks metres from the NPC).
           const area = marker?.area;
-          const close = screenMarker && !area && (!marker || marker.r <= screenMarker.radius);
+          const close = screenMarker && (!marker || marker.r <= screenMarker.radius);
           const target = close ? sceneMarker(current.image) : null;
           if (target) {
             const deg = -(target.x - screen.width / 2) * degPerPx;
@@ -1436,6 +1665,7 @@ export async function navigate(ctx) {
             counts.segments++;
             counts.close = (counts.close ?? 0) + 1;
             await press(routine.nearDeflection ?? 0.5);
+            await hopJump();
             await sleep(screenMarker.hopMs ?? routine.hopMs ?? 700);
             await release();
           } else {
@@ -1459,89 +1689,126 @@ export async function navigate(ctx) {
                 : marker.r <= (routine.arriveRadius ?? 0.12)
             )
               return result('arrived', { screen: current.screen, marker });
-            const cone = coneHeading(current.image, screen, minimap, routine.cone);
-            let heading = cone.deg;
-            if (coneFrozen >= frozenLimit || cone.contrast < (routine.cone?.minContrast ?? 12)) {
-              // A faint cone: run forward a moment and take the camera heading from the way
-              // the minimap scrolled (the character runs where the camera faces).
-              if (!routine.shift)
-                return result('no_camera', {
-                  screen: current.screen ?? 'unknown',
-                  contrast: Math.round(cone.contrast),
-                });
-              const before = current;
-              if (!held) await press(routine.deflection ?? 1);
-              await sleep(routine.hopMs ?? 700);
-              current = await frame();
-              counts.frames++;
-              if (current.screen === null) continue;
-              const travel = mapShift(before.image, current.image, screen, minimap, routine.shift);
-              // A map that did not scroll means the way ahead is blocked: jump and turn as for
-              // any other stall, and give up after `stuckLimit` of them.
-              if (!travel) {
-                if (++counts.stuck >= stuckLimit)
-                  return result('stuck', {
-                    screen: current.screen,
+            const cone = readCone(current.image);
+            if (routine.route) {
+              await routeHop(marker, cone);
+              counts.segments++;
+            } else {
+              let heading = cone.deg;
+              if (coneFrozen >= frozenLimit || cone.contrast < (routine.cone?.minContrast ?? 12)) {
+                // A faint cone: run forward a moment and take the camera heading from the way
+                // the minimap scrolled (the character runs where the camera faces).
+                if (!routine.shift)
+                  return result('no_camera', {
+                    screen: current.screen ?? 'unknown',
                     contrast: Math.round(cone.contrast),
                   });
-                if (routine.stuckButton) await tapButton(routine.stuckButton);
-                await turnCamera(counts.stuck % 2 ? 60 : -60);
-                continue;
-              }
-              heading = travel.deg;
-              counts.shift = (counts.shift ?? 0) + 1;
-            }
-            const error = wrapDeg(marker.deg - heading);
-            // What is left after any camera turn; the joystick tilts by it (`steer`) so the
-            // character walks straight at the marker, as small camera drags turn unreliably.
-            let rest = error;
-            if (Math.abs(error) > (routine.turnDeg ?? 20)) {
-              await turnCamera(error);
-              rest = 0;
-              // On a pale town minimap the brightest window may be a street, not the cone: it
-              // then stays put however far the camera turns. After `frozenTurns` such turns,
-              // take the heading from the map scroll (`shift`) for the rest of the routine.
-              let before = heading;
-              const fromCone =
-                coneFrozen < frozenLimit && cone.contrast >= (routine.cone?.minContrast ?? 12);
-              // A drag turns the camera only roughly as far as asked (the game scales it with
-              // swipe speed), so re-read the cone and correct until it points at the marker.
-              for (let i = 0; fromCone && i < (routine.aimTries ?? 0); i++) {
-                const check = await frame();
+                const before = current;
+                if (!held) await press(routine.deflection ?? 1);
+                await sleep(routine.hopMs ?? 700);
+                current = await frame();
                 counts.frames++;
-                if (check.screen === null || !allowed.has(check.screen)) break;
-                current = check;
-                const aim = coneHeading(check.image, screen, minimap, routine.cone);
-                if (aim.contrast < (routine.cone?.minContrast ?? 12)) break;
-                if (fromCone && routine.shift) {
-                  const asked = Math.abs(wrapDeg(marker.deg - before));
-                  if (Math.abs(wrapDeg(aim.deg - before)) < asked / 4) {
-                    if (++coneFrozen >= frozenLimit) {
-                      counts.coneFrozen = true;
+                if (current.screen === null) continue;
+                const travel = mapShift(
+                  before.image,
+                  current.image,
+                  screen,
+                  minimap,
+                  routine.shift,
+                );
+                // A map that did not scroll means the way ahead is blocked: jump and turn as for
+                // any other stall, and give up after `stuckLimit` of them.
+                if (!travel) {
+                  if (++counts.stuck >= stuckLimit)
+                    return result('stuck', {
+                      screen: current.screen,
+                      contrast: Math.round(cone.contrast),
+                    });
+                  if (routine.stuckButton) await tapButton(routine.stuckButton);
+                  await turnCamera(counts.stuck % 2 ? 60 : -60);
+                  continue;
+                }
+                heading = travel.deg;
+                counts.shift = (counts.shift ?? 0) + 1;
+              }
+              const error = wrapDeg(marker.deg - heading);
+              // What is left after any camera turn; the joystick tilts by it (`steer`) so the
+              // character walks straight at the marker, as small camera drags turn unreliably.
+              let rest = error;
+              if (Math.abs(error) > (routine.turnDeg ?? 20)) {
+                await turnCamera(error);
+                rest = 0;
+                // On a pale town minimap the brightest window may be a street, not the cone: it
+                // then stays put however far the camera turns. After `frozenTurns` such turns,
+                // take the heading from the map scroll (`shift`) for the rest of the routine.
+                let before = heading;
+                const fromCone =
+                  coneFrozen < frozenLimit && cone.contrast >= (routine.cone?.minContrast ?? 12);
+                // A drag turns the camera only roughly as far as asked (the game scales it with
+                // swipe speed), so re-read the cone and correct until it points at the marker.
+                // A camera-up minimap turned instead: re-read the marker, which should now be up.
+                for (let i = 0; fromCone && i < (routine.aimTries ?? 0); i++) {
+                  const check = await frame();
+                  counts.frames++;
+                  if (check.screen === null || !allowed.has(check.screen)) break;
+                  current = check;
+                  if (rotates) {
+                    const seen = markerBearing(
+                      check.image,
+                      screen,
+                      minimap,
+                      markerColor,
+                      routine.markerReach ?? 1.35,
+                    );
+                    if (!seen) break;
+                    rest = wrapDeg(seen.deg - 90);
+                    if (Math.abs(rest) <= (routine.aimDeg ?? 5)) break;
+                    counts.aims = (counts.aims ?? 0) + 1;
+                    await turnCamera(rest);
+                    rest = 0;
+                    continue;
+                  }
+                  const aim = coneHeading(check.image, screen, minimap, routine.cone);
+                  if (aim.contrast < (routine.cone?.minContrast ?? 12)) break;
+                  if (fromCone && routine.shift) {
+                    const asked = Math.abs(wrapDeg(marker.deg - before));
+                    // A drag never lands this far off: the reading flipped to another bright
+                    // patch (a white plaza at dusk), so the cone cannot be trusted at all.
+                    if (Math.abs(wrapDeg(marker.deg - aim.deg)) > (routine.cone?.jumpDeg ?? 100)) {
+                      coneFrozen = frozenLimit;
+                      counts.coneJumped = true;
                       break;
                     }
-                  } else coneFrozen = 0;
+                    if (Math.abs(wrapDeg(aim.deg - before)) < asked / 4) {
+                      if (++coneFrozen >= frozenLimit) {
+                        counts.coneFrozen = true;
+                        break;
+                      }
+                    } else coneFrozen = 0;
+                  }
+                  before = aim.deg;
+                  const left = wrapDeg(marker.deg - aim.deg);
+                  rest = left;
+                  if (Math.abs(left) <= (routine.aimDeg ?? 5)) break;
+                  counts.aims = (counts.aims ?? 0) + 1;
+                  await turnCamera(left);
+                  rest = 0;
                 }
-                before = aim.deg;
-                const left = wrapDeg(marker.deg - aim.deg);
-                rest = left;
-                if (Math.abs(left) <= (routine.aimDeg ?? 5)) break;
-                counts.aims = (counts.aims ?? 0) + 1;
-                await turnCamera(left);
-                rest = 0;
               }
-            }
-            const tilt = routine.steer ? Math.max(-45, Math.min(45, rest)) : 0;
-            counts.segments++;
-            // Close to a point marker: walk a short hop and stop, so it is not overrun between
-            // frames. An area is metres across, so keep running until well inside it.
-            if (!area && marker.r < (routine.nearRadius ?? 1.1)) {
-              await press(routine.nearDeflection ?? 0.5, tilt);
-              await sleep(routine.hopMs ?? 700);
-              await release();
-            } else {
-              await press(routine.deflection ?? 1, tilt);
-              if (routine.segmentMs) await sleep(routine.segmentMs);
+              const tilt = routine.steer ? Math.max(-45, Math.min(45, rest)) : 0;
+              counts.segments++;
+              // Close to a point marker: walk a short hop and stop, so it is not overrun between
+              // frames. An area is metres across, so keep running until well inside it.
+              if (!area && marker.r < (routine.nearRadius ?? 1.1)) {
+                await press(routine.nearDeflection ?? 0.5, tilt);
+                await hopJump();
+                await sleep(routine.hopMs ?? 700);
+                await release();
+              } else {
+                await hopJump();
+                await press(routine.deflection ?? 1, tilt);
+                if (routine.segmentMs) await sleep(routine.segmentMs);
+              }
             }
           }
         }
@@ -1549,8 +1816,23 @@ export async function navigate(ctx) {
       // Slow captures (wireless ADB: ~3 s a frame) leave too few re-aims within maxMs, so a
       // routine also gets at least `minFrames` frames, up to three times maxMs.
       const elapsed = now() - started;
-      if (elapsed >= maxMs && (counts.frames >= (routine.minFrames ?? 0) || elapsed >= maxMs * 3))
-        return result('timeout', { screen: current.screen ?? 'unknown' });
+      if (elapsed >= maxMs && (counts.frames >= (routine.minFrames ?? 0) || elapsed >= maxMs * 3)) {
+        // `extendMs`: a walk still closing in on the quest (HUD metres down by `extendMetres`
+        // since the last check) keeps going, up to `extendMaxMs` in all.
+        const metres =
+          routine.extendMs && elapsed < (routine.extendMaxMs ?? maxMs)
+            ? await hudMetres(current.image)
+            : undefined;
+        if (
+          metres !== undefined &&
+          lastMetres !== undefined &&
+          metres <= lastMetres - (routine.extendMetres ?? 10)
+        ) {
+          lastMetres = metres;
+          maxMs = Math.min(elapsed + routine.extendMs, routine.extendMaxMs ?? Infinity);
+          counts.extensions = (counts.extensions ?? 0) + 1;
+        } else return result('timeout', { screen: current.screen ?? 'unknown', toMetres: metres });
+      }
       const next = await frame();
       counts.frames++;
       // A camera turn redraws the minimap cone, so motion only counts for frames without one.
@@ -1564,7 +1846,28 @@ export async function navigate(ctx) {
       ) {
         const motion = regionMotion(current.image, next.image, minimap, screen);
         counts.motion.push(Math.round(motion * 10) / 10);
-        if (motion < threshold) {
+        if (routine.route) {
+          if (motion >= threshold) {
+            // The stick angle is known, so the scroll direction gives the camera heading.
+            const travel = mapShift(
+              current.image,
+              next.image,
+              screen,
+              minimap,
+              routine.shift ?? {},
+            );
+            if (travel && routeTilt !== null && !rotates)
+              routeHeading = wrapDeg(travel.deg - routeTilt);
+            if (avoid.ttl > 0) avoid.ttl--;
+          } else {
+            if (++counts.stuck >= stuckLimit) return result('stuck', { screen: next.screen });
+            // The planned way is blocked though the minimap shows it open: avoid it next time.
+            avoid.cells = routePlan?.path.slice(1, 6) ?? [];
+            avoid.ttl = 2;
+            routeHold = null;
+            if (routine.stuckButton) await tapButton(routine.stuckButton);
+          }
+        } else if (motion < threshold) {
           if (++counts.stuck >= stuckLimit) return result('stuck', { screen: next.screen });
           if (routine.stuckButton) await tapButton(routine.stuckButton);
           await turnCamera(counts.stuck % 2 ? 60 : -60);
@@ -1781,20 +2084,46 @@ export function colorBlobs(image, screen, match) {
 
 /**
  * Tracked-quest diamonds on the world map: blobs of `quest.rgb` with `quest.pixels` pixels and a
- * near-square `quest.size` box (reference px at `scale`), outside the `exclude` screen rects
+ * near-square `quest.size` box (reference px at `scale`), or separate `quest.w`/`quest.h` ranges
+ * for tall icons, outside the `exclude` screen rects
  * (e.g. the recommended-quest banner, whose diamond looks the same). `quest` may be a list of
- * such specs (e.g. blue world quests and gold Archon quests).
+ * such specs (e.g. blue world quests and gold Archon quests). With `quest.stack` [min, max], a
+ * blob counts only with another one that far straight below it (the bar and dot of a "!" pin, not
+ * a lone blue icon such as a Statue of The Seven); the pair is reported once, as the upper blob.
+ * With `quest.core` {min, share}, the blob must also be hollow around a pale core: at least
+ * `share` of its rows have a pixel within 2 px of its centre column whose every channel reaches
+ * `min` (the white "!" inside a quest icon's glow, not a patch of blue rock or sky).
  */
 export function mapQuestMarkers(image, screen, quest, exclude = [], scale = 1) {
   if (Array.isArray(quest))
     return quest.flatMap((spec) => mapQuestMarkers(image, screen, spec, exclude, scale));
   const area = scale * scale;
-  return colorBlobs(image, screen, near(quest.rgb, quest.tolerance)).filter(
+  const pale = (b) => {
+    const { min, share } = quest.core;
+    const cx = Math.round((b.x * image.width) / screen.width),
+      cy = Math.round((b.y * image.height) / screen.height);
+    const top = Math.max(0, cy - Math.floor(b.h / 2)),
+      bottom = Math.min(image.height - 1, top + b.h - 1);
+    let rows = 0;
+    for (let y = top; y <= bottom; y++)
+      for (let x = Math.max(0, cx - 2); x <= Math.min(image.width - 1, cx + 2); x++)
+        if (rgbAt(image, x, y).every((v) => v >= min)) {
+          rows++;
+          break;
+        }
+    return rows >= share * (bottom - top + 1);
+  };
+  const blobs = colorBlobs(image, screen, near(quest.rgb, quest.tolerance)).filter(
     (b) =>
       within(b.n, quest.pixels, area) &&
-      within(b.w, quest.size, scale) &&
-      within(b.h, quest.size, scale) &&
-      !exclude.some((rect) => inside(b, rect)),
+      within(b.w, quest.w ?? quest.size, scale) &&
+      within(b.h, quest.h ?? quest.size, scale) &&
+      !exclude.some((rect) => inside(b, rect)) &&
+      (!quest.core || pale(b)),
+  );
+  if (!quest.stack) return blobs;
+  return blobs.filter((b) =>
+    blobs.some((o) => Math.abs(o.x - b.x) <= 4 * scale && within(o.y - b.y, quest.stack, scale)),
   );
 }
 
@@ -1808,8 +2137,8 @@ export function mapWaypoints(image, screen, waypoint, exclude = [], scale = 1) {
   const sx = image.width / screen.width,
     sy = image.height / screen.height;
   const area = scale * scale;
-  const { radius, white, min } = waypoint.ring;
-  const ringWhite = (b) => {
+  const { white, min } = waypoint.ring;
+  const ringWhite = (b, radius) => {
     let count = 0;
     for (let k = 0; k < 16; k++) {
       const a = (k * Math.PI) / 8;
@@ -1820,13 +2149,17 @@ export function mapWaypoints(image, screen, waypoint, exclude = [], scale = 1) {
     }
     return count;
   };
+  // A shape may override the ring radius: a fully drawn statue ring centres the blob inside it.
   return colorBlobs(image, screen, near(waypoint.rgb, waypoint.tolerance)).filter(
     (b) =>
-      waypoint.shapes.some(
-        (s) => within(b.n, s.pixels, area) && within(b.w, s.w, scale) && within(b.h, s.h, scale),
-      ) &&
       !exclude.some((rect) => inside(b, rect)) &&
-      ringWhite(b) >= min,
+      waypoint.shapes.some(
+        (s) =>
+          within(b.n, s.pixels, area) &&
+          within(b.w, s.w, scale) &&
+          within(b.h, s.h, scale) &&
+          ringWhite(b, s.ringRadius ?? waypoint.ring.radius) >= min,
+      ),
   );
 }
 
@@ -1894,14 +2227,40 @@ export async function teleport(ctx) {
       if (metres <= routine.nearMeters)
         return result('quest_near', { screen: current.screen, questMetres: metres, closed: true });
     }
-    await tapButton(ctx, routine.open);
-    counts.taps++;
-    current = await next(routine.openMs ?? 1500);
+    // Tracking the quest again makes the game open the map centred on it; the map button opens
+    // it centred on the player, where another quest's marker may be mistaken for this one.
+    let centredOnQuest = false;
+    if (ctx.track) {
+      const tracked = await trackQuest({ ...ctx, routine: ctx.track, force: true });
+      counts.taps += tracked.taps ?? 0;
+      counts.tracked = tracked.status;
+      current = await frame();
+      counts.frames++;
+      centredOnQuest = tracked.status === 'tracked_far' && current.screen === mapScreen;
+      if (!centredOnQuest && !routine.screens.includes(current.screen))
+        return result('interrupted', { screen: current.screen ?? 'unknown' });
+      // The game remembers map zoom; zooming keeps the quest centred. Start fully zoomed in so
+      // the nearest teleport points are told apart, and zoom out below only if none is close.
+      if (centredOnQuest && routine.maxZoom !== undefined && routine.maxZoomTaps) {
+        for (let i = 0; i < routine.maxZoomTaps; i++) {
+          await tapButton(ctx, routine.maxZoom);
+          counts.taps++;
+          await sleep(routine.zoomSettleMs ?? 300);
+        }
+        current = await next();
+        counts.maxZoom = routine.maxZoomTaps;
+      }
+    }
+    if (!centredOnQuest) {
+      await tapButton(ctx, routine.open);
+      counts.taps++;
+      current = await next(routine.openMs ?? 1500);
+    }
     if (current.screen !== mapScreen)
       return result('no_map', { screen: current.screen ?? 'unknown' });
     // A freshly opened map is centred on the player: a quest diamond near the centre is close
     // enough to walk, so close the map and leave the walking to navigate.
-    if (routine.nearRadius && !force) {
+    if (routine.nearRadius && !force && !centredOnQuest) {
       const near = targetMarkers(current.image)
         .map((m) => ({ ...m, d: dist(m, center) }))
         .filter((m) => m.d <= routine.nearRadius * scale)
@@ -2002,9 +2361,28 @@ export async function teleport(ctx) {
   // so skip that many and use the next nearest instead.
   const skip = ctx.skip ?? 0;
   if (skip) counts.skipped = skip;
-  const waypoints = mapWaypoints(mapImage, screen, routine.waypoint, exclude, scale)
-    .map((w) => ({ ...w, d: dist(w, quest) }))
-    .sort((a, b) => a.d - b.d);
+  const findWaypoints = (image) =>
+    mapWaypoints(image, screen, routine.waypoint, exclude, scale)
+      .map((w) => ({ ...w, d: dist(w, quest) }))
+      .sort((a, b) => a.d - b.d);
+  let waypoints = findWaypoints(mapImage);
+  // After zooming in fully, a teleport point beyond the screen edge may be nearer than every
+  // visible one: zoom out (the quest stays centred) until one lies within the edge distance.
+  if (counts.maxZoom && !overlay && routine.zoomOut !== undefined) {
+    const edge = () => Math.min(quest.x, quest.y, screen.width - quest.x, screen.height - quest.y);
+    counts.zoomOuts = 0;
+    while (!(waypoints[skip]?.d <= edge()) && counts.zoomOuts < (routine.zoomOutTaps ?? 3)) {
+      await tapButton(ctx, routine.zoomOut);
+      counts.taps++;
+      counts.zoomOuts++;
+      current = await next();
+      if (current.screen !== mapScreen)
+        return result('interrupted', { screen: current.screen ?? 'unknown' });
+      quest = centred(current.image) ?? quest;
+      mapImage = current.image;
+      waypoints = findWaypoints(mapImage);
+    }
+  }
   // A teleport point under the quest diamond is hidden by it but shows in the overlap list.
   let title = overlay && !skip ? await teleportPanel() : null,
     chosen = title ? { ...quest, d: 0 } : null,
